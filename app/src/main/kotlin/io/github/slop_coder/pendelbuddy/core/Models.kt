@@ -19,6 +19,8 @@ data class Station(
     val lon: Double? = null,
     /** "train", "bus", "tram", "ship", "cableway"… as the station search reports it. */
     val icon: String? = null,
+    /** Your own short name for the tabs at the bottom; null = automatic ([ShortNames]). */
+    val short: String? = null,
 )
 
 enum class TravelClass { FIRST, SECOND }
@@ -38,6 +40,17 @@ data class Settings(
     val buffers: List<Buffer> = emptyList(),
 ) {
     val complete get() = home != null && work != null && home.id != work.id
+
+    /** Sets the tab name of a station wherever it is saved. */
+    fun withShortName(id: String, short: String?): Settings {
+        fun Station.renamed() = if (this.id == id) copy(short = short?.trim()?.ifEmpty { null }) else this
+        return copy(
+            home = home?.renamed(),
+            work = work?.renamed(),
+            vias = vias.map { it.renamed() },
+            buffers = buffers.map { it.copy(station = it.station.renamed()) },
+        )
+    }
 }
 
 /**

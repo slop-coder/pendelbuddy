@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -68,6 +70,7 @@ import com.journeyapps.barcodescanner.ScanOptions
 import io.github.slop_coder.pendelbuddy.core.Buffer
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
+import io.github.slop_coder.pendelbuddy.core.ShortNames
 import io.github.slop_coder.pendelbuddy.core.Station
 import io.github.slop_coder.pendelbuddy.core.TravelClass
 import java.time.LocalDate
@@ -83,6 +86,7 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
     var timeDialog by remember { mutableStateOf(false) }
     var keyDialog by remember { mutableStateOf(false) }
     var bufferDialog by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<Station?>(null) }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri?.let(vm::exportRatings)
     }
@@ -111,8 +115,8 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
-            StationRow(Icons.Filled.Home, "Home", s.home) { picking = Pick.HOME }
-            StationRow(Icons.Filled.Work, "Work", s.work) { picking = Pick.WORK }
+            StationRow(Icons.Filled.Home, "Home", s.home, onRename = { renaming = it }) { picking = Pick.HOME }
+            StationRow(Icons.Filled.Work, "Work", s.work, onRename = { renaming = it }) { picking = Pick.WORK }
 
             Header("Stations in between")
             Text(
@@ -124,6 +128,7 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
             for (v in Commute.viasInOrder(s)) {
                 ListItem(
                     headlineContent = { Text(v.name) },
+                    supportingContent = { TabName(v) { renaming = v } },
                     leadingContent = { Icon(Icons.Filled.Train, null) },
                     trailingContent = {
                         IconButton(onClick = { s = s.copy(vias = s.vias - v) }) { Icon(Icons.Filled.Close, "Remove") }
@@ -260,6 +265,9 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
             },
             onDismiss = { picking = null },
         )
+    }
+    renaming?.let { st ->
+        ShortNameDialog(st, onSave = { s = s.withShortName(st.id, it); renaming = null }, onDismiss = { renaming = null })
     }
     if (bufferDialog) {
         BufferDialog(
@@ -406,12 +414,46 @@ private fun KeyDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun StationRow(icon: ImageVector, label: String, station: Station?, onClick: () -> Unit) {
+private fun StationRow(icon: ImageVector, label: String, station: Station?, onRename: (Station) -> Unit, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(station?.name ?: "Not set") },
+        supportingContent = station?.let { st -> { TabName(st) { onRename(st) } } },
         overlineContent = { Text(label) },
         leadingContent = { Icon(icon, null) },
         trailingContent = { TextButton(onClick = onClick) { Text(if (station == null) "Set" else "Change") } },
+    )
+}
+
+/** "Tab: ZH ✎" under a saved station; tap to change the short name used in the tabs at the bottom. */
+@Composable
+private fun TabName(st: Station, onClick: () -> Unit) {
+    Row(Modifier.clickable(onClick = onClick).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Tab: ${ShortNames.of(st)}", color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.size(4.dp))
+        Icon(Icons.Filled.Edit, "Edit tab name", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+    }
+}
+
+@Composable
+private fun ShortNameDialog(st: Station, onSave: (String?) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(ShortNames.of(st)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tab name") },
+        text = {
+            Column {
+                Text("Short name of ${st.name} in the tabs at the bottom.", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.size(8.dp))
+                OutlinedTextField(value = text, onValueChange = { text = it.take(20) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(text.takeIf { it.trim() != ShortNames.auto(st.name) }) }) { Text("Save") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { onSave(null) }) { Text("Automatic") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
     )
 }
 

@@ -55,6 +55,7 @@ import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
 import io.github.slop_coder.pendelbuddy.core.Leg
 import io.github.slop_coder.pendelbuddy.core.Ratings
+import io.github.slop_coder.pendelbuddy.core.ShortNames
 import io.github.slop_coder.pendelbuddy.core.Station
 import io.github.slop_coder.pendelbuddy.core.Trip
 import io.github.slop_coder.pendelbuddy.core.TravelClass
@@ -306,7 +307,7 @@ private fun StationBar(
                         selected = selected,
                         // Tapping the selected start again goes back to the normal commute.
                         onClick = { onPick(if (selected && current != null) null else s) },
-                        label = { Text(s.name) },
+                        label = { Text(ShortNames.of(s)) },
                         leadingIcon = if (selected) ({ Icon(Icons.Filled.Place, null, Modifier.size(18.dp)) }) else null,
                     )
                 }
