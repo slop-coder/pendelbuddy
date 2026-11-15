@@ -2,7 +2,6 @@ package io.github.slop_coder.pendelbuddy.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,7 +36,7 @@ import io.github.slop_coder.pendelbuddy.core.Sky
 import io.github.slop_coder.pendelbuddy.core.toSwiss
 
 /** Width of the place names on the left; the chart starts after it so the hours line up. */
-private val LABEL = 44.dp
+private val LABEL = 54.dp
 
 /**
  * The picked day's weather at the start and at the destination in one chart: per place a row of icons and
@@ -51,9 +50,9 @@ fun WeatherCard(places: List<Pair<String, DayWeather>>, now: Long, at: Long) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             places.forEachIndexed { i, (name, w) -> IconRow(name, w, colors[i % colors.size]) }
-            Chart(places.map { it.second }, colors, at, Modifier.fillMaxWidth().height(48.dp))
+            Spacer(Modifier.size(4.dp))
+            Chart(places.map { it.second }, colors, at, Modifier.fillMaxWidth().height(110.dp))
             HourLabels(places.first().second)
-            Legend(places.map { it.second })
             val oldest = places.minOf { it.second.fetchedAt }
             if (now - oldest > Freshness.WEATHER) {
                 Text(
@@ -73,16 +72,17 @@ private fun IconRow(name: String, w: DayWeather, color: Color) {
         Text(
             name,
             Modifier.width(LABEL),
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.titleSmall,
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.weight(0.5f))
         for (h in w.hours.filter { it.time.toSwiss().hour % 2 == 0 }) {
-            Row(Modifier.weight(2f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Icon(Sky.ofWmo(h.code).icon(), null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${Math.round(h.temp)}", style = MaterialTheme.typography.labelSmall)
+            Column(Modifier.weight(2f), horizontalAlignment = Alignment.CenterHorizontally) {
+                val sky = Sky.ofWmo(h.code)
+                Icon(sky.icon(), sky.label(), Modifier.size(20.dp), tint = skyColor(sky))
+                Text("${Math.round(h.temp)}°", style = MaterialTheme.typography.labelMedium)
             }
         }
         Spacer(Modifier.weight(0.5f))
@@ -98,7 +98,7 @@ private fun HourLabels(w: DayWeather) {
             Text(
                 "%02d".format(h.time.toSwiss().hour),
                 Modifier.weight(2f),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -107,30 +107,12 @@ private fun HourLabels(w: DayWeather) {
     }
 }
 
-/** Only on wet days: what the bar colors mean and the heaviest hour. */
-@Composable
-private fun Legend(days: List<DayWeather>) {
-    val wet = days.flatMap { it.hours }.filter { it.intensity() != null }
-    if (wet.isEmpty()) return
-    val snow = wet.any { Sky.ofWmo(it.code) == Sky.SNOW }
-    Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(if (snow) "Rain/snow" else "Rain", style = MaterialTheme.typography.labelSmall)
-        for (i in Intensity.entries) {
-            Spacer(Modifier.width(8.dp))
-            Box(Modifier.size(8.dp).background(rainColor(i)))
-            Spacer(Modifier.width(3.dp))
-            Text(intensityLabel(i), style = MaterialTheme.typography.labelSmall)
-        }
-        Spacer(Modifier.width(8.dp))
-        Text("· max %.1f mm/h".format(wet.maxOf { it.precipitation }), style = MaterialTheme.typography.labelSmall)
-    }
-}
-
 @Composable
 private fun Chart(days: List<DayWeather>, colors: List<Color>, at: Long, modifier: Modifier) {
     val marker = MaterialTheme.colorScheme.onSurfaceVariant
     val measurer = rememberTextMeasurer()
-    val scaleStyle = MaterialTheme.typography.labelSmall.copy(color = marker)
+    val scaleStyle = MaterialTheme.typography.labelMedium.copy(color = marker)
+    val rainStyle = MaterialTheme.typography.labelSmall.copy(color = rainColor(Intensity.MODERATE))
     val first = DayWeather.FIRST_HOUR
     val span = (DayWeather.LAST_HOUR - first + 1).toFloat()
     val all = days.flatMap { it.hours }
@@ -143,19 +125,28 @@ private fun Chart(days: List<DayWeather>, colors: List<Color>, at: Long, modifie
         fun x(hour: Float) = left + (hour - first + 0.5f) / span * width
         fun y(t: Double) = (size.height * 0.9f - ((t - lo) / (hi - lo) * size.height * 0.8f)).toFloat()
         val slot = width / span
+        // Rain bars grow from the bottom; their scale is read off the same two guide lines as the temperature.
+        val top = maxOf(2.0, all.maxOf { it.precipitation })
+        fun barHeight(mm: Double) = (mm / top * size.height * 0.6).toFloat()
+        val wet = all.any { it.intensity() != null }
         for (t in listOf(all.maxOf { it.temp }, all.minOf { it.temp })) {
-            val label = measurer.measure("${Math.round(t)}°", scaleStyle)
             val ty = y(t)
-            drawText(label, topLeft = Offset(left - label.size.width - 4.dp.toPx(), ty - label.size.height / 2f))
+            val pad = 4.dp.toPx()
+            val tl = measurer.measure("${Math.round(t)}°", scaleStyle)
+            drawText(tl, topLeft = Offset(left - tl.size.width - pad, ty - tl.size.height))
+            if (wet) {
+                val mm = (size.height - ty) / (size.height * 0.6f) * top
+                val rl = measurer.measure("%.1f mm".format(mm), rainStyle)
+                drawText(rl, topLeft = Offset(left - rl.size.width - pad, ty))
+            }
             drawLine(marker.copy(alpha = 0.3f), Offset(left, ty), Offset(size.width, ty), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 8f)))
         }
-        // Rain bars: one half of each hour per place, scaled to the wettest hour (at least 2 mm/h).
+        // Rain bars: one half of each hour per place.
         val half = slot * 0.8f / days.size
-        val top = maxOf(2.0, all.maxOf { it.precipitation })
         days.forEachIndexed { p, w ->
             for (h in w.hours) {
                 val i = h.intensity() ?: continue
-                val barH = (h.precipitation.coerceIn(0.15, top) / top * size.height * 0.6).toFloat()
+                val barH = barHeight(h.precipitation.coerceIn(0.15, top))
                 val left = x(h.time.toSwiss().hour.toFloat()) - slot * 0.4f + p * half
                 drawRect(rainColor(i), Offset(left, size.height - barH), Size(half, barH))
             }
@@ -178,10 +169,14 @@ private fun Chart(days: List<DayWeather>, colors: List<Color>, at: Long, modifie
     }
 }
 
-fun intensityLabel(i: Intensity) = when (i) {
-    Intensity.LIGHT -> "light"
-    Intensity.MODERATE -> "moderate"
-    Intensity.HEAVY -> "heavy"
+/** Sun yellow, rain blue, snow light blue, thunder purple, clouds and fog grey. */
+fun skyColor(sky: Sky) = when (sky) {
+    Sky.SUNNY -> Color(0xFFFFC107)
+    Sky.PARTLY_CLOUDY -> Color(0xFFFFB74D)
+    Sky.CLOUDY, Sky.FOG -> Color(0xFF9E9E9E)
+    Sky.RAIN -> Color(0xFF42A5F5)
+    Sky.SNOW -> Color(0xFFB3E5FC)
+    Sky.THUNDER -> Color(0xFFAB47BC)
 }
 
 fun rainColor(i: Intensity) = when (i) {
