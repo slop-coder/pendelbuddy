@@ -29,3 +29,19 @@ Needs JDK 21 and the Android SDK (`local.properties` with `sdk.dir`).
 
     ./gradlew :app:testDebugUnitTest :app:assembleDebug
     adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+A `minified` build type (shrunk like a release, debug-signed, id suffix `.minified`) installs next to the debug app to
+check R8: `./gradlew :app:assembleMinified`.
+
+### Releases
+
+Every push to `main` runs the unit tests and a debug build (`.github/workflows/ci.yml`). Pushing a tag `v*` builds a
+signed release APK and attaches it to a GitHub Release (`release.yml`). Secrets: `KEYSTORE_BASE64`,
+`KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
+
+The OJP API key is not part of the app or the repo: each user pastes (or scans) their own in the app's settings.
+
+## Licence
+
+Public domain ([Unlicense](LICENSE)). Timetable data: opentransportdata.swiss / transport.opendata.ch; weather:
+Open-Meteo with MeteoSwiss ICON-CH (CC BY 4.0).

@@ -174,6 +174,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             store.saveSettings(s)
             fetchedThisVisit.clear()
             refresh(cause = "Settings changed")
+            // New home or work: their weather (only what is not there yet today).
+            updateWeather(force = false, cause = "Settings changed")
             prefetch(Commute.weekDays(nowSec().toSwiss().toLocalDate()), force = emptySet())
         }
     }
