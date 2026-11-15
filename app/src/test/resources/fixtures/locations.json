@@ -1,0 +1,4 @@
+{"stations": [
+  {"id": "8599007", "name": "Zwischenau", "coordinate": {"type": "WGS84", "x": 47.01, "y": 7.65}, "icon": "train"},
+  {"id": null, "name": "Zwischenau, Hauptgasse 1", "coordinate": {"type": "WGS84", "x": 47.0, "y": 7.6}}
+]}

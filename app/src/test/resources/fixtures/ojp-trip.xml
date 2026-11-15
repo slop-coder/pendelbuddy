@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OJP xmlns="http://www.vdv.de/ojp" xmlns:siri="http://www.siri.org.uk/siri" version="2.0">
+  <OJPResponse>
+    <siri:ServiceDelivery>
+      <siri:ResponseTimestamp>2026-11-16T06:00:00Z</siri:ResponseTimestamp>
+      <OJPTripDelivery>
+        <TripResult>
+          <Id>1</Id>
+          <Trip>
+            <Id>T1</Id>
+            <Duration>PT1H30M</Duration>
+            <StartTime>2026-11-16T06:33:00Z</StartTime>
+            <EndTime>2026-11-16T08:03:00Z</EndTime>
+            <Transfers>1</Transfers>
+            <Leg>
+              <Id>1</Id>
+              <TimedLeg>
+                <LegBoard>
+                  <siri:StopPointRef>ch:1:sloid:99008:2:4</siri:StopPointRef>
+                  <StopPointName><Text xml:lang="de">Talwil</Text></StopPointName>
+                  <PlannedQuay><Text xml:lang="de">4</Text></PlannedQuay>
+                  <EstimatedQuay><Text xml:lang="de">5</Text></EstimatedQuay>
+                  <ServiceDeparture><TimetabledTime>2026-11-16T06:33:00Z</TimetabledTime><EstimatedTime>2026-11-16T06:35:10Z</EstimatedTime></ServiceDeparture>
+                  <ExpectedDepartureOccupancy><FareClass>firstClass</FareClass><OccupancyLevel>manySeatsAvailable</OccupancyLevel></ExpectedDepartureOccupancy>
+                  <ExpectedDepartureOccupancy><FareClass>secondClass</FareClass><OccupancyLevel>standingRoomOnly</OccupancyLevel></ExpectedDepartureOccupancy>
+                </LegBoard>
+                <LegAlight>
+                  <siri:StopPointRef>ch:1:sloid:99002:3:5</siri:StopPointRef>
+                  <StopPointName><Text xml:lang="de">Musterdorf</Text></StopPointName>
+                  <ServiceArrival><TimetabledTime>2026-11-16T06:51:00Z</TimetabledTime></ServiceArrival>
+                </LegAlight>
+                <Service>
+                  <OperatingDayRef>2026-11-16</OperatingDayRef>
+                  <JourneyRef>ch:1:sjyid:100001:10809-001</JourneyRef>
+                  <siri:LineRef>ojp:91008:A</siri:LineRef>
+                  <Mode><PtMode>rail</PtMode><Name><Text xml:lang="de">Zug</Text></Name><ShortName><Text xml:lang="de">IC</Text></ShortName></Mode>
+                  <PublishedServiceName><Text xml:lang="de">IC8</Text></PublishedServiceName>
+                  <TrainNumber>10809</TrainNumber>
+                  <siri:OperatorRef>11</siri:OperatorRef>
+                  <DestinationText><Text xml:lang="de">Endhausen</Text></DestinationText>
+                </Service>
+              </TimedLeg>
+            </Leg>
+            <Leg>
+              <Id>2</Id>
+              <TransferLeg>
+                <TransferType>walk</TransferType>
+                <LegStart><siri:StopPointRef>ch:1:sloid:99002:3:5</siri:StopPointRef><Name><Text xml:lang="de">Musterdorf</Text></Name></LegStart>
+                <LegEnd><siri:StopPointRef>ch:1:sloid:99002:4:7</siri:StopPointRef><Name><Text xml:lang="de">Musterdorf</Text></Name></LegEnd>
+                <TimeWindowStart>2026-11-16T06:51:00Z</TimeWindowStart>
+                <TimeWindowEnd>2026-11-16T06:56:00Z</TimeWindowEnd>
+                <Duration>PT5M</Duration>
+              </TransferLeg>
+            </Leg>
+            <Leg>
+              <Id>3</Id>
+              <TimedLeg>
+                <LegBoard>
+                  <siri:StopPointRef>ch:1:sloid:99002:4:7</siri:StopPointRef>
+                  <StopPointName><Text xml:lang="de">Musterdorf</Text></StopPointName>
+                  <ServiceDeparture><TimetabledTime>2026-11-16T07:02:00Z</TimetabledTime></ServiceDeparture>
+                </LegBoard>
+                <LegAlight>
+                  <siri:StopPointRef>ch:1:sloid:99003:1:32</siri:StopPointRef>
+                  <StopPointName><Text xml:lang="de">Beispielstadt</Text></StopPointName>
+                  <ServiceArrival><TimetabledTime>2026-11-16T07:58:00Z</TimetabledTime><EstimatedTime>2026-11-16T08:03:00Z</EstimatedTime></ServiceArrival>
+                </LegAlight>
+                <Service>
+                  <OperatingDayRef>2026-11-16</OperatingDayRef>
+                  <Mode><PtMode>rail</PtMode><ShortName><Text xml:lang="de">IR</Text></ShortName></Mode>
+                  <PublishedServiceName><Text xml:lang="de">16</Text></PublishedServiceName>
+                  <TrainNumber>02110</TrainNumber>
+                  <Cancelled>true</Cancelled>
+                </Service>
+              </TimedLeg>
+            </Leg>
+          </Trip>
+        </TripResult>
+      </OJPTripDelivery>
+    </siri:ServiceDelivery>
+  </OJPResponse>
+</OJP>

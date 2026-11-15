@@ -1,0 +1,143 @@
+package io.github.slop_coder.pendelbuddy.core
+
+import kotlinx.serialization.Serializable
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
+
+/** All timetable times are Swiss local time. */
+val SWISS: ZoneId = ZoneId.of("Europe/Zurich")
+
+fun Long.toSwiss(): ZonedDateTime = Instant.ofEpochSecond(this).atZone(SWISS)
+
+@Serializable
+data class Station(
+    val id: String,
+    val name: String,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    /** "train", "bus", "tram", "ship", "cableway"… as the station search reports it. */
+    val icon: String? = null,
+)
+
+enum class TravelClass { FIRST, SECOND }
+
+@Serializable
+data class Settings(
+    val home: Station? = null,
+    val work: Station? = null,
+    /** Stations in between (e.g. a hub where you get off for breakfast); offered as quick picks. */
+    val vias: List<Station> = emptyList(),
+    val travelClass: TravelClass = TravelClass.SECOND,
+    /** Minutes after midnight from which weekday trips go home instead of to work. */
+    val switchMinute: Int = 12 * 60,
+) {
+    val complete get() = home != null && work != null && home.id != work.id
+}
+
+/** Expected occupancy from the timetable service: 1 = low, 2 = medium, 3 = high. */
+@Serializable
+data class Capacity(val first: Int? = null, val second: Int? = null) {
+    fun of(c: TravelClass) = if (c == TravelClass.FIRST) first else second
+
+    companion object {
+        /** Worst leg counts, since that is where you end up standing. */
+        fun worst(all: List<Capacity>) = Capacity(
+            all.mapNotNull { it.first }.maxOrNull(),
+            all.mapNotNull { it.second }.maxOrNull(),
+        )
+    }
+}
+
+@Serializable
+data class Leg(
+    /** "IC 8", "S 3", "B 10"; null for walking. */
+    val line: String?,
+    val direction: String? = null,
+    val fromId: String,
+    val fromName: String,
+    val toId: String = "",
+    val toName: String,
+    /** Scheduled times, epoch seconds. */
+    val departure: Long,
+    val arrival: Long,
+    val departureDelay: Int? = null,
+    val platform: String? = null,
+    val arrivalDelay: Int? = null,
+    val arrivalPlatform: String? = null,
+    val capacity: Capacity = Capacity(),
+    /** Train number without leading zeros, e.g. "10809"; kept with ratings. */
+    val trainNumber: String? = null,
+    val cancelled: Boolean = false,
+) {
+    val walk get() = line == null
+
+    fun expectedDeparture() = departure + 60L * (departureDelay ?: 0)
+    fun expectedArrival() = arrival + 60L * (arrivalDelay ?: 0)
+
+    /** Identifies "the same train" across days: line, boarding station and scheduled time of day. */
+    val trainKey get() = line?.let { "$it|$fromId|${departure.toSwiss().toLocalTime()}" }
+}
+
+@Serializable
+data class Trip(
+    val fromId: String,
+    val toId: String,
+    val departure: Long,
+    val arrival: Long,
+    /** Minutes of delay from the realtime prognosis, if there was one. */
+    val departureDelay: Int? = null,
+    val arrivalDelay: Int? = null,
+    val platform: String? = null,
+    val transfers: Int = 0,
+    val legs: List<Leg> = emptyList(),
+) {
+    val capacity get() = Capacity.worst(legs.map { it.capacity })
+    val trains get() = legs.filter { !it.walk }
+    val products get() = trains.mapNotNull { it.line }
+    val cancelled get() = legs.any { it.cancelled }
+    val serviceDate: LocalDate get() = departure.toSwiss().toLocalDate()
+
+    /** Same scheduled train(s) at the same time; used to merge fresh results into the cache. */
+    val key get() = "${departure.toSwiss().toLocalTime()}|${products.joinToString(",")}"
+
+    fun expectedDeparture() = departure + 60L * (departureDelay ?: 0)
+    fun expectedArrival() = arrival + 60L * (arrivalDelay ?: 0)
+
+    /** Copy with all times moved by [seconds]. */
+    fun shifted(seconds: Long) = copy(
+        departure = departure + seconds,
+        arrival = arrival + seconds,
+        legs = legs.map { it.copy(departure = it.departure + seconds, arrival = it.arrival + seconds) },
+    )
+
+    /** Copy without the realtime and forecast parts, for showing old data. */
+    fun timetableOnly() = copy(
+        departureDelay = null,
+        arrivalDelay = null,
+        legs = legs.map { it.copy(departureDelay = null, capacity = Capacity()) },
+    )
+
+    fun withoutDelays() = copy(departureDelay = null, arrivalDelay = null, legs = legs.map { it.copy(departureDelay = null, arrivalDelay = null) })
+
+    /**
+     * Without walks before the first and after the last train: the trip runs from the first departure to the
+     * last arrival, whatever stop was asked for. Walks between trains (changes) stay.
+     */
+    fun trimWalks(): Trip? {
+        val first = legs.indexOfFirst { !it.walk }.takeIf { it >= 0 } ?: return null
+        val last = legs.indexOfLast { !it.walk }
+        val rides = legs.subList(first, last + 1)
+        val a = rides.first()
+        val b = rides.last()
+        return copy(
+            departure = a.departure,
+            arrival = b.arrival,
+            departureDelay = a.departureDelay,
+            arrivalDelay = b.arrivalDelay,
+            platform = a.platform,
+            legs = rides,
+        )
+    }
+}
