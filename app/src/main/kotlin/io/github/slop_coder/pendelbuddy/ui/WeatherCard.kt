@@ -25,6 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,10 +51,7 @@ fun WeatherCard(places: List<Pair<String, DayWeather>>, now: Long, at: Long) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             places.forEachIndexed { i, (name, w) -> IconRow(name, w, colors[i % colors.size]) }
-            Row {
-                Spacer(Modifier.width(LABEL))
-                Chart(places.map { it.second }, colors, at, Modifier.weight(1f).height(48.dp))
-            }
+            Chart(places.map { it.second }, colors, at, Modifier.fillMaxWidth().height(48.dp))
             HourLabels(places.first().second)
             Legend(places.map { it.second })
             val oldest = places.minOf { it.second.fetchedAt }
@@ -130,15 +129,26 @@ private fun Legend(days: List<DayWeather>) {
 @Composable
 private fun Chart(days: List<DayWeather>, colors: List<Color>, at: Long, modifier: Modifier) {
     val marker = MaterialTheme.colorScheme.onSurfaceVariant
+    val measurer = rememberTextMeasurer()
+    val scaleStyle = MaterialTheme.typography.labelSmall.copy(color = marker)
     val first = DayWeather.FIRST_HOUR
     val span = (DayWeather.LAST_HOUR - first + 1).toFloat()
     val all = days.flatMap { it.hours }
     val lo = all.minOf { it.temp } - 1
     val hi = all.maxOf { it.temp } + 1
     Canvas(modifier) {
-        // x of the middle of an hour; the chart spans FIRST_HOUR:00 to LAST_HOUR+1:00.
-        fun x(hour: Float) = (hour - first + 0.5f) / span * size.width
-        val slot = size.width / span
+        // The temperature scale sits in the label column on the left; the hours start after it.
+        val left = LABEL.toPx()
+        val width = size.width - left
+        fun x(hour: Float) = left + (hour - first + 0.5f) / span * width
+        fun y(t: Double) = (size.height * 0.9f - ((t - lo) / (hi - lo) * size.height * 0.8f)).toFloat()
+        val slot = width / span
+        for (t in listOf(all.maxOf { it.temp }, all.minOf { it.temp })) {
+            val label = measurer.measure("${Math.round(t)}°", scaleStyle)
+            val ty = y(t)
+            drawText(label, topLeft = Offset(left - label.size.width - 4.dp.toPx(), ty - label.size.height / 2f))
+            drawLine(marker.copy(alpha = 0.3f), Offset(left, ty), Offset(size.width, ty), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 8f)))
+        }
         // Rain bars: one half of each hour per place, scaled to the wettest hour (at least 2 mm/h).
         val half = slot * 0.8f / days.size
         val top = maxOf(2.0, all.maxOf { it.precipitation })
@@ -154,7 +164,7 @@ private fun Chart(days: List<DayWeather>, colors: List<Color>, at: Long, modifie
             val path = Path()
             w.hours.forEachIndexed { idx, h ->
                 val px = x(h.time.toSwiss().hour.toFloat())
-                val py = (size.height * 0.9f - ((h.temp - lo) / (hi - lo) * size.height * 0.8f)).toFloat()
+                val py = y(h.temp)
                 if (idx == 0) path.moveTo(px, py) else path.lineTo(px, py)
             }
             drawPath(path, colors[p % colors.size], style = Stroke(width = 2.dp.toPx()))

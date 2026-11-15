@@ -481,6 +481,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val s = _state.value.settings
         val b = Commute.bufferFor(s, r) ?: return connections(r.from, r.to, at, limit, s.maxChanges, cause)
         val first = connections(r.from, b.station, at, limit, null, "$cause (margin, part 1)")
+        // Kept on their own: every bus to the margin station, for the "Also at" times in the trip screen.
+        store.saveRoute(store.route(r.from.id, b.station.id).merge(first, nowSec()))
         val earliest = first.minOfOrNull { it.expectedArrival() } ?: return emptyList()
         val second = connections(b.station, r.to, earliest + b.minutes * 60L, 16, null, "$cause (margin, part 2)")
         return Commute.joinAtBuffer(first, second, b)
@@ -556,8 +558,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val day = store.route(route.from.id, route.to.id)
             .project(at.toSwiss().toLocalDate())
             .filter { Commute.allowed(it.trip, st.settings, buffer) }
+        // Earlier departures of the first ride: from the trips, and with a margin from all rides to the margin station.
+        val known = day.map { it.trip } + (buffer?.let { b ->
+            store.route(route.from.id, b.station.id).project(at.toSwiss().toLocalDate()).map { it.trip }
+        } ?: emptyList())
         val rows = day.upcoming(at, count = 8, now = now)
-            .map { TripRow(it.trip, it.copiedFrom, Ratings.forTrip(ratings, it.trip, cls), Commute.earlierDepartures(it.trip, day.map { d -> d.trip })) }
+            .map { TripRow(it.trip, it.copiedFrom, Ratings.forTrip(ratings, it.trip, cls), Commute.earlierDepartures(it.trip, known)) }
         // Where you start and where you go: home and work, in the order of the trip.
         val places = listOfNotNull(Commute.origin(st.settings, route.direction), Commute.destination(st.settings, route.direction))
         val weather = places.mapNotNull { p ->
