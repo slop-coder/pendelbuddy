@@ -125,9 +125,10 @@ object Commute {
     fun allowed(t: Trip, s: Settings, buffer: Buffer?) =
         (s.maxChanges == null || t.transfers <= s.maxChanges) && (buffer == null || !breaksBuffer(t, buffer))
 
-    /** Earliest arrival when leaving no sooner than [leaveAt]. */
-    fun quickest(trips: List<Trip>, leaveAt: Long) =
-        trips.filter { !it.cancelled && it.expectedDeparture() >= leaveAt }.minByOrNull { it.expectedArrival() }
+    /** Earliest arrival among the trips still to be caught at [now]; on a tie, the one leaving later. */
+    fun quickest(trips: List<Trip>, now: Long) =
+        trips.filter { !it.cancelled && it.expectedDeparture() >= now }
+            .minWithOrNull(compareBy<Trip> { it.expectedArrival() }.thenByDescending { it.expectedDeparture() })
 }
 
 /**

@@ -89,7 +89,7 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
         ) {
             LazyColumn(Modifier.fillMaxSize()) {
                 item { RouteHeader(st, onFlip = vm::flipDirection) }
-                st.quickest?.let { q -> item { QuickestCard(q, st.weather, st.settings.travelClass, onClick = { onTrip(q) }) } }
+                st.quickest?.let { q -> item { QuickestCard(q, st.weather, st.settings.travelClass, st.now, onClick = { onTrip(q) }) } }
                 if (st.rows.isEmpty() && !st.loading) {
                     item {
                         Text(
@@ -151,7 +151,7 @@ private fun status(st: CommuteState): String {
 }
 
 @Composable
-private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, onClick: () -> Unit) {
+private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, now: Long, onClick: () -> Unit) {
     val t = row.trip
     Card(
         onClick = onClick,
@@ -162,7 +162,11 @@ private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, on
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Timer, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Leaving in 10 minutes or later", style = MaterialTheme.typography.labelLarge)
+                val minutes = (t.expectedDeparture() - now) / 60
+                Text(
+                    "Fastest arrival · " + if (minutes < 1) "leave now" else "leave in $minutes min",
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
             Spacer(Modifier.size(4.dp))
             Text("Arrive ${hm(t.expectedArrival())}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)

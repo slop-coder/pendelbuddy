@@ -380,7 +380,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .filter { Commute.allowed(it.trip, st.settings, buffer) }
             .upcoming(now, count = 8)
             .map { TripRow(it.trip, it.copiedFrom, Ratings.forTrip(ratings, it.trip, cls)) }
-        val quickest = Commute.quickest(rows.map { it.trip }, now + 10 * 60)?.let { q -> rows.first { it.trip == q } }
+        val quickest = Commute.quickest(rows.map { it.trip }, now)?.let { q -> rows.first { it.trip == q } }
         val weather = forecasts[route.to.id]
             ?.takeIf { now - it.fetchedAt <= Freshness.WEATHER }
             ?.at(quickest?.trip?.expectedArrival() ?: now)

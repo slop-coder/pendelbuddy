@@ -47,8 +47,13 @@ class CommuteTest {
         val a = Trip("1", "3", departure = 1000, arrival = 5000)
         val b = Trip("1", "3", departure = 1300, arrival = 4000)
         val c = Trip("1", "3", departure = 1100, arrival = 3000, departureDelay = 1)
-        assertEquals(b, Commute.quickest(listOf(a, b, c), leaveAt = 1200))
-        assertEquals(c, Commute.quickest(listOf(a, b, c), leaveAt = 1000))
+        // c (leaving 1100, 1 min late) arrives first.
+        assertEquals(c, Commute.quickest(listOf(a, b, c), now = 1000))
+        // Once c has left, b is next best.
+        assertEquals(b, Commute.quickest(listOf(a, b, c), now = 1200))
+        // Same arrival: prefer leaving later.
+        val d = Trip("1", "3", departure = 1350, arrival = 4000)
+        assertEquals(d, Commute.quickest(listOf(b, d), now = 1200))
     }
 
     @Test
