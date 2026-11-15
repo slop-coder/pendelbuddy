@@ -29,16 +29,26 @@ enum class Sky { SUNNY, PARTLY_CLOUDY, CLOUDY, FOG, RAIN, SNOW, THUNDER;
 
 @Serializable
 data class Hour(val time: Long, val temp: Double, val code: Int, val precipitation: Double = 0.0) {
-    /** How hard it rains or snows: from the weather code (slight / moderate / heavy), else from the mm per hour. */
-    fun intensity(): Intensity? = when (code) {
-        51, 56, 61, 66, 71, 77, 80, 85 -> Intensity.LIGHT
-        53, 63, 73, 81 -> Intensity.MODERATE
-        55, 57, 65, 67, 75, 82, 86, 95, 96, 99 -> Intensity.HEAVY
-        else -> when {
-            precipitation < 0.1 -> null
-            precipitation < 1.0 -> Intensity.LIGHT
-            precipitation < 4.0 -> Intensity.MODERATE
-            else -> Intensity.HEAVY
+    /**
+     * How hard it rains or snows, by the amount (so bar height and color agree): light below 2.5 mm/h, moderate
+     * up to 7.6, heavy above (the usual meteorological limits). Without an amount, the weather code decides;
+     * drizzle is always light.
+     */
+    fun intensity(): Intensity? {
+        val wet = Sky.ofWmo(code).let { it == Sky.RAIN || it == Sky.SNOW || it == Sky.THUNDER }
+        if (precipitation >= 0.1) {
+            return when {
+                precipitation < 2.5 -> Intensity.LIGHT
+                precipitation < 7.6 -> Intensity.MODERATE
+                else -> Intensity.HEAVY
+            }
+        }
+        if (!wet) return null
+        return when (code) {
+            in 51..57, 61, 66, 71, 77, 80, 85 -> Intensity.LIGHT
+            63, 73, 81 -> Intensity.MODERATE
+            65, 67, 75, 82, 86, in 95..99 -> Intensity.HEAVY
+            else -> Intensity.LIGHT
         }
     }
 }

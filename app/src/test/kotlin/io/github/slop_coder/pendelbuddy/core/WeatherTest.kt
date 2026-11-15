@@ -13,11 +13,15 @@ class WeatherTest {
 
     @Test
     fun intensity() {
-        assertEquals(Intensity.LIGHT, h(7, 5.0, 61).intensity())
-        assertEquals(Intensity.MODERATE, h(7, 5.0, 81).intensity())
+        // By the amount when there is one: the code does not override it.
+        assertEquals(Intensity.LIGHT, h(16, 5.0, 55, 1.2).intensity()) // dense drizzle, 1.2 mm/h
+        assertEquals(Intensity.MODERATE, h(13, 5.0, 63, 5.0).intensity())
+        assertEquals(Intensity.HEAVY, h(13, 5.0, 82, 9.0).intensity())
+        assertEquals(Intensity.LIGHT, h(7, 5.0, 3, 2.0).intensity()) // cloudy code but measurable rain
+        // No amount: the code decides, drizzle is light.
+        assertEquals(Intensity.LIGHT, h(7, 5.0, 55).intensity())
+        assertEquals(Intensity.MODERATE, h(7, 5.0, 63).intensity())
         assertEquals(Intensity.HEAVY, h(7, 5.0, 65).intensity())
-        // Cloudy code but measurable rain: judged by the mm per hour.
-        assertEquals(Intensity.MODERATE, h(7, 5.0, 3, 2.0).intensity())
         assertNull(h(7, 5.0, 3, 0.05).intensity())
     }
 
@@ -26,7 +30,7 @@ class WeatherTest {
         val hours = (0..23).map { hr ->
             when (hr) {
                 14 -> h(hr, 9.0, 61, 0.4)
-                15 -> h(hr, 8.0, 63, 2.5)
+                15 -> h(hr, 8.0, 63, 3.0)
                 16 -> h(hr, 7.0, 61, 0.3)
                 20 -> h(hr, 2.0, 71, 0.2)
                 else -> h(hr, if (hr < 5) -1.0 else 4.0 + hr / 4.0)
