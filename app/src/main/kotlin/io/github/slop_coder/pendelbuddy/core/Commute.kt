@@ -9,6 +9,7 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+@Serializable
 enum class Direction { TO_WORK, TO_HOME;
 
     val other get() = if (this == TO_WORK) TO_HOME else TO_WORK
@@ -62,6 +63,67 @@ object Commute {
         val a = sin(dLat / 2).pow(2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2)
         return 6371 * 2 * asin(sqrt(a))
     }
+
+    /**
+     * The safety margin for this route: only on the normal commute (starting at home or work, not at a station
+     * picked under "I'm at…") and only at a station strictly between start and end.
+     */
+    fun bufferFor(s: Settings, r: Route): Buffer? {
+        if (r.from.id != origin(s, r.direction)?.id) return null
+        return s.buffers.firstOrNull { it.appliesTo(r.direction) && it.station.id != r.from.id && it.station.id != r.to.id }
+    }
+
+    /**
+     * Trips planned in two parts around a margin: each [first] (start → buffer station) is joined to the
+     * earliest [second] (buffer station → end) leaving at least [Buffer.minutes] after it arrives. Of several
+     * first parts reaching the same second part, only the latest is kept: no point waiting longer.
+     */
+    fun joinAtBuffer(first: List<Trip>, second: List<Trip>, b: Buffer): List<Trip> {
+        val joined = first.filter { !it.cancelled }.mapNotNull { a ->
+            val next = second.filter { !it.cancelled && it.departure >= a.expectedArrival() + b.minutes * 60L }
+                .minByOrNull { it.arrival } ?: return@mapNotNull null
+            a to next
+        }
+        return joined.groupBy { it.second }.map { (b2, pairs) -> pairs.maxBy { it.first.departure }.first to b2 }
+            .map { (a, b2) ->
+                val wait = Leg(
+                    line = null,
+                    fromId = b.station.id,
+                    fromName = b.station.name,
+                    toId = b.station.id,
+                    toName = b.station.name,
+                    departure = a.arrival,
+                    arrival = b2.departure,
+                )
+                Trip(
+                    fromId = a.fromId,
+                    toId = b2.toId,
+                    departure = a.departure,
+                    arrival = b2.arrival,
+                    departureDelay = a.departureDelay,
+                    arrivalDelay = b2.arrivalDelay,
+                    platform = a.platform,
+                    transfers = a.transfers + b2.transfers + 1,
+                    legs = a.legs + wait + b2.legs,
+                )
+            }
+            .sortedBy { it.departure }
+    }
+
+    /** True if the trip changes at the buffer station with less than its margin (e.g. a trip cached before the margin was set). */
+    fun breaksBuffer(t: Trip, b: Buffer): Boolean {
+        val rides = t.trains
+        for (i in 0 until rides.size - 1) {
+            val inbound = rides[i]
+            if (inbound.toId != b.station.id) continue
+            if (rides[i + 1].departure - inbound.expectedArrival() < b.minutes * 60L) return true
+        }
+        return false
+    }
+
+    /** The trips allowed by the settings: no more than the maximum changes, and the margin kept. */
+    fun allowed(t: Trip, s: Settings, buffer: Buffer?) =
+        (s.maxChanges == null || t.transfers <= s.maxChanges) && (buffer == null || !breaksBuffer(t, buffer))
 
     /** Earliest arrival when leaving no sooner than [leaveAt]. */
     fun quickest(trips: List<Trip>, leaveAt: Long) =

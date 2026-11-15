@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -45,11 +46,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
+import io.github.slop_coder.pendelbuddy.core.Leg
 import io.github.slop_coder.pendelbuddy.core.Ratings
 import io.github.slop_coder.pendelbuddy.core.Station
 import io.github.slop_coder.pendelbuddy.core.Trip
@@ -97,7 +101,7 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
                     }
                 }
                 items(st.rows) { row ->
-                    TripItem(row, st.settings.travelClass, onClick = { onTrip(row) })
+                    TripItem(row, st.settings.travelClass, st.now, onClick = { onTrip(row) })
                     HorizontalDivider()
                 }
             }
@@ -162,11 +166,10 @@ private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, on
             }
             Spacer(Modifier.size(4.dp))
             Text("Arrive ${hm(t.expectedArrival())}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "Leave ${hm(t.expectedDeparture())}" + (t.platform?.let { " · Pl. $it" } ?: "") + " · " + t.products.joinToString(", "),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Fullness(row, cls)
+            Text("Leave ${hm(t.expectedDeparture())}" + (t.platform?.let { " · Pl. $it" } ?: ""), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.size(4.dp))
+            Trains(t, cls)
+            Mine(row)
             Spacer(Modifier.size(8.dp))
             if (weather != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -185,26 +188,26 @@ private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, on
 }
 
 @Composable
-private fun TripItem(row: TripRow, cls: TravelClass, onClick: () -> Unit) {
+private fun TripItem(row: TripRow, cls: TravelClass, now: Long, onClick: () -> Unit) {
     val t = row.trip
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp)) {
+    // Shown for a few minutes after it left (in case it is late); dimmed once it should be gone.
+    val gone = t.expectedDeparture() < now
+    Column(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (gone) 0.45f else 1f)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Times(t)
             Spacer(Modifier.weight(1f))
             Text(duration(t.arrival - t.departure), style = MaterialTheme.typography.bodyMedium)
         }
+        Spacer(Modifier.size(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                t.products.joinToString(" · ") +
-                    (if (t.transfers > 0) " · ${t.transfers} change${if (t.transfers > 1) "s" else ""}" else " · direct") +
-                    (t.platform?.let { " · Pl. $it" } ?: ""),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
+            Trains(t, cls, Modifier.weight(1f))
+            t.platform?.let { Text("Pl. $it", style = MaterialTheme.typography.titleMedium) }
         }
         if (t.cancelled) Text("Cancelled", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-        else Fullness(row, cls)
+        Mine(row)
     }
 }
 
@@ -231,35 +234,46 @@ private fun Times(t: Trip) {
     }
 }
 
-/** Occupancy forecast of the timetable (when fresh) and your own ratings of this train. */
+/** One badge per train, colored by its occupancy forecast in your class. */
 @Composable
-private fun Fullness(row: TripRow, cls: TravelClass) {
-    val level = row.trip.capacity.of(cls)
-    val mine = row.mine
-    if (level == null && mine == null) return
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-        if (level != null) {
-            Icon(
-                when (level) { 1 -> Icons.Filled.Person; 2 -> Icons.Filled.Group; else -> Icons.Filled.Groups },
-                capacityLabel(level),
-                Modifier.size(18.dp),
-                tint = when (level) {
-                    1 -> MaterialTheme.colorScheme.primary
-                    2 -> MaterialTheme.colorScheme.tertiary
-                    else -> MaterialTheme.colorScheme.error
-                },
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(capacityLabel(level), style = MaterialTheme.typography.bodySmall)
-        }
-        if (mine != null) {
-            if (level != null) Spacer(Modifier.width(12.dp))
-            Text(
-                "You: ${mine.percent}% · ${Ratings.label(mine.percent)}" + if (mine.count > 1) " (${mine.count}×)" else "",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+private fun Trains(t: Trip, cls: TravelClass, modifier: Modifier = Modifier) {
+    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (leg in t.trains) LineBadge(leg, cls)
     }
+}
+
+@Composable
+fun LineBadge(leg: Leg, cls: TravelClass) {
+    val (bg, fg) = occupancyColors(leg.capacity.of(cls))
+    Surface(color = bg, contentColor = fg, shape = RoundedCornerShape(6.dp)) {
+        Text(
+            leg.line ?: "?",
+            Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            textDecoration = if (leg.cancelled) TextDecoration.LineThrough else null,
+        )
+    }
+}
+
+/** Green, yellow, red for low, medium, high occupancy; neutral when there is no forecast. */
+@Composable
+fun occupancyColors(level: Int?): Pair<Color, Color> = when (level) {
+    1 -> Color(0xFF2E7D32) to Color.White
+    2 -> Color(0xFFF9A825) to Color.Black
+    3 -> Color(0xFFC62828) to Color.White
+    else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+/** Your own ratings of the trip's fullest train. */
+@Composable
+private fun Mine(row: TripRow) {
+    val mine = row.mine ?: return
+    Text(
+        "You: ${mine.percent}% · ${Ratings.label(mine.percent)}" + if (mine.count > 1) " (${mine.count}×)" else "",
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(top = 2.dp),
+    )
 }
 
 @Composable

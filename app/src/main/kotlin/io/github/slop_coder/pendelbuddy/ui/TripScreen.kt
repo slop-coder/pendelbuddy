@@ -100,7 +100,9 @@ private fun WalkRow(leg: Leg) {
         Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null, Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Text(
-            "Change at ${leg.fromName} · ${(leg.arrival - leg.departure) / 60} min",
+            // A wait added by a safety margin has the same station at both ends.
+            (if (leg.fromId.isNotEmpty() && leg.fromId == leg.toId) "Margin at " else "Change at ") +
+                "${leg.fromName} · ${(leg.arrival - leg.departure) / 60} min",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -112,7 +114,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(leg.line ?: "?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                LineBadge(leg, cls)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     listOfNotNull(leg.direction?.let { "towards $it" }, leg.trainNumber?.let { "no. $it" }).joinToString(" · "),

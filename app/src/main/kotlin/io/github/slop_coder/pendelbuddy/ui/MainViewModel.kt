@@ -11,6 +11,7 @@ import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
 import io.github.slop_coder.pendelbuddy.core.Forecast
 import io.github.slop_coder.pendelbuddy.core.Freshness
+import io.github.slop_coder.pendelbuddy.core.LOOK_BACK
 import io.github.slop_coder.pendelbuddy.core.Leg
 import io.github.slop_coder.pendelbuddy.core.ForecastCheck
 import io.github.slop_coder.pendelbuddy.core.Rating
@@ -278,7 +279,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         fetchLock.withLock {
             _state.update { it.copy(loading = true) }
             try {
-                val fresh = connections(route.from, route.to, now - 120, limit = 8)
+                val fresh = plan(route, now - LOOK_BACK, limit = 8)
                 store.saveRoute(store.route(route.from.id, route.to.id).merge(fresh, now))
                 lastFetch[key] = now
                 _state.update { it.copy(offline = false) }
@@ -305,20 +306,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val today = now.toSwiss().toLocalDate()
         val morning = today.atTime(LocalTime.of(5, 30)).atZone(SWISS).toEpochSecond()
         val afternoon = today.atTime(LocalTime.of(s.switchMinute / 60, s.switchMinute % 60)).atZone(SWISS).toEpochSecond()
-        for ((from, to, at) in listOf(Triple(home, work, morning), Triple(work, home, afternoon))) {
-            val cache = store.route(from.id, to.id)
+        val commutes = listOf(Route(home, work, Direction.TO_WORK) to morning, Route(work, home, Direction.TO_HOME) to afternoon)
+        for ((route, at) in commutes) {
+            val cache = store.route(route.from.id, route.to.id)
             if (cache.prefilledOn == today.toString()) continue
-            val trips = connections(from, to, at, limit = 16)
+            val trips = plan(route, at, limit = 16)
             store.saveRoute(cache.merge(trips, now).copy(prefilledOn = today.toString()))
         }
     }
 
+    /**
+     * Trips for [r] from [at] on. With a safety margin on the way, planned in two parts so that trips with a
+     * longer change (which a planner never suggests on its own) are found.
+     */
+    private suspend fun plan(r: Route, at: Long, limit: Int): List<Trip> {
+        val s = _state.value.settings
+        val b = Commute.bufferFor(s, r) ?: return connections(r.from, r.to, at, limit, s.maxChanges)
+        val first = connections(r.from, b.station, at, limit, null)
+        val earliest = first.minOfOrNull { it.expectedArrival() } ?: return emptyList()
+        val second = connections(b.station, r.to, earliest + b.minutes * 60L, 16, null)
+        return Commute.joinAtBuffer(first, second, b)
+    }
+
     /** OJP 2.0 when a key is saved, else (or when OJP fails) transport.opendata.ch. */
-    private suspend fun connections(from: Station, to: Station, at: Long, limit: Int): List<Trip> {
+    private suspend fun connections(from: Station, to: Station, at: Long, limit: Int, maxChanges: Int?): List<Trip> {
         val key = withContext(Dispatchers.IO) { secrets.ojpKey() }
         if (key != null) {
             try {
-                val trips = OjpClient.connections(key, from, to, at, limit)
+                val trips = OjpClient.connections(key, from, to, at, limit, maxChanges)
                 _state.update { it.copy(source = "OJP 2.0", ojpProblem = null) }
                 return trips
             } catch (e: HttpException) {
@@ -359,8 +374,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val cls = st.settings.travelClass
+        val buffer = Commute.bufferFor(st.settings, route)
         val rows = store.route(route.from.id, route.to.id)
             .project(now.toSwiss().toLocalDate())
+            .filter { Commute.allowed(it.trip, st.settings, buffer) }
             .upcoming(now, count = 8)
             .map { TripRow(it.trip, it.copiedFrom, Ratings.forTrip(ratings, it.trip, cls)) }
         val quickest = Commute.quickest(rows.map { it.trip }, now + 10 * 60)?.let { q -> rows.first { it.trip == q } }

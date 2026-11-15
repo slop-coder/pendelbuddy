@@ -32,8 +32,21 @@ data class Settings(
     val travelClass: TravelClass = TravelClass.SECOND,
     /** Minutes after midnight from which weekday trips go home instead of to work. */
     val switchMinute: Int = 12 * 60,
+    /** Most changes a commute trip may have; null = any. */
+    val maxChanges: Int? = null,
+    /** Extra time to keep when changing at certain stations (a late bus, breakfast). */
+    val buffers: List<Buffer> = emptyList(),
 ) {
     val complete get() = home != null && work != null && home.id != work.id
+}
+
+/**
+ * Keep at least [minutes] between arriving at [station] and leaving it again, on trips in [direction]
+ * (null = both directions).
+ */
+@Serializable
+data class Buffer(val station: Station, val minutes: Int, val direction: Direction? = null) {
+    fun appliesTo(d: Direction) = direction == null || direction == d
 }
 
 /** Expected occupancy from the timetable service: 1 = low, 2 = medium, 3 = high. */

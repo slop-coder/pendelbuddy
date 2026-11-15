@@ -21,7 +21,7 @@ object Ojp {
         return "85" + m.groupValues[1].padStart(5, '0')
     }
 
-    fun tripRequest(from: Station, to: Station, at: Long, results: Int, now: Long): String {
+    fun tripRequest(from: Station, to: Station, at: Long, results: Int, now: Long, maxChanges: Int? = null): String {
         val ts = Instant.ofEpochSecond(now).toString()
         return """<?xml version="1.0" encoding="UTF-8"?>
 <OJP xmlns="http://www.vdv.de/ojp" xmlns:siri="http://www.siri.org.uk/siri" version="2.0">
@@ -41,8 +41,8 @@ object Ojp {
         </Destination>
         <Params>
           <NumberOfResults>$results</NumberOfResults>
+          <UseRealtimeData>explanatory</UseRealtimeData>${maxChanges?.let { "\n          <TransferLimit>$it</TransferLimit>" } ?: ""}
           <IncludeIntermediateStops>false</IncludeIntermediateStops>
-          <UseRealtimeData>explanatory</UseRealtimeData>
         </Params>
       </OJPTripRequest>
     </siri:ServiceRequest>

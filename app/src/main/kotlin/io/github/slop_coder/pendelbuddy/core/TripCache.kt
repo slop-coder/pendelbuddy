@@ -124,6 +124,9 @@ fun ShownTrip.atTime(now: Long): ShownTrip {
     return copy(trip = t)
 }
 
-/** The trips still to come at [now] (a train that left a minute ago may still be catchable). */
+/** How far back the list reaches, so a delayed train (or one that just left) is still shown. */
+const val LOOK_BACK = 5 * 60L
+
+/** The trips from [LOOK_BACK] before [now] on, plus earlier ones that are late enough to still be waiting. */
 fun List<ShownTrip>.upcoming(now: Long, count: Int) =
-    map { it.atTime(now) }.filter { it.trip.expectedDeparture() >= now - 60 }.take(count)
+    map { it.atTime(now) }.filter { it.trip.departure >= now - LOOK_BACK || it.trip.expectedDeparture() >= now }.take(count)

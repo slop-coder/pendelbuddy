@@ -89,8 +89,8 @@ object OjpClient {
     /** Debug builds keep the last answer (never the key) in files/ojp-last.xml, to check the parser against it. */
     var debugDump: File? = null
 
-    suspend fun connections(key: String, from: Station, to: Station, at: Long, limit: Int = 8): List<Trip> {
-        val body = Http.postXml(URL, Ojp.tripRequest(from, to, at, limit, System.currentTimeMillis() / 1000), key)
+    suspend fun connections(key: String, from: Station, to: Station, at: Long, limit: Int = 8, maxChanges: Int? = null): List<Trip> {
+        val body = Http.postXml(URL, Ojp.tripRequest(from, to, at, limit, System.currentTimeMillis() / 1000, maxChanges), key)
         debugDump?.let { f -> withContext(Dispatchers.IO) { f.writeText(body) } }
         return withContext(Dispatchers.Default) { Ojp.parseTrips(body, from.id, to.id) }
     }
