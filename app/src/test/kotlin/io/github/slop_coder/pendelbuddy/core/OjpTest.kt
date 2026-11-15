@@ -34,7 +34,15 @@ class OjpTest {
         assertEquals("8599002", ic.toId)
         assertEquals("10809", ic.trainNumber)
         assertEquals("Endhausen", ic.direction)
-        assertEquals(Capacity(1, 3), ic.capacity)
+        // Talwil → Mittelberg: 1st many, 2nd standing; Mittelberg → Musterdorf: 1st few, 2nd many. The fullest counts.
+        assertEquals(Capacity(2, 3), ic.capacity)
+        assertEquals(listOf("Talwil", "Mittelberg"), ic.calls.map { it.name })
+        assertEquals(
+            listOf(Section("Talwil", "Mittelberg", 3), Section("Mittelberg", "Musterdorf", 1)),
+            ic.sections(TravelClass.SECOND),
+        )
+        // Same level twice in a row: one stretch.
+        assertEquals(listOf(Section("Talwil", "Musterdorf", null)), ic.copy(calls = ic.calls.map { it.copy(capacity = Capacity()) }).sections(TravelClass.SECOND))
         assertTrue(t.legs[1].walk)
         assertEquals("2110", t.legs[2].trainNumber)
         assertTrue(t.cancelled)

@@ -1,7 +1,9 @@
 package io.github.slop_coder.pendelbuddy.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -159,36 +162,47 @@ private fun Stop(time: Long, delay: Int?, station: String, platform: String?) {
     }
 }
 
-/** The occupancy forecast for both classes, yours in bold. */
+/**
+ * The occupancy forecast in your class stretch by stretch (it changes where people get on and off), and the
+ * fullest stretch of the other class.
+ */
 @Composable
 private fun Forecast(leg: Leg, cls: TravelClass) {
-    val levels = listOf(TravelClass.FIRST to leg.capacity.first, TravelClass.SECOND to leg.capacity.second)
-    if (levels.all { it.second == null }) {
+    val other = if (cls == TravelClass.FIRST) TravelClass.SECOND else TravelClass.FIRST
+    val sections = leg.sections(cls)
+    if (leg.capacity.first == null && leg.capacity.second == null) {
         Text("No occupancy forecast", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
-    for ((c, level) in levels) {
-        if (level == null) continue
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                when (level) { 1 -> Icons.Filled.Person; 2 -> Icons.Filled.Group; else -> Icons.Filled.Groups },
-                null,
-                Modifier.size(18.dp),
-                tint = when (level) {
-                    1 -> MaterialTheme.colorScheme.primary
-                    2 -> MaterialTheme.colorScheme.tertiary
-                    else -> MaterialTheme.colorScheme.error
-                },
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                "${if (c == TravelClass.FIRST) "1st" else "2nd"} class: ${capacityLabel(level)}",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (c == cls) FontWeight.Bold else null,
-            )
-        }
+    Text("Occupancy, ${className(cls)}", style = MaterialTheme.typography.labelLarge)
+    if (sections.isEmpty()) {
+        // No stops in between known (e.g. data from transport.opendata.ch): just the one value.
+        SectionRow("${leg.fromName} → ${leg.toName}", leg.capacity.of(cls))
+    } else {
+        for (sec in sections) SectionRow("${sec.from} → ${sec.to}", sec.level)
+    }
+    leg.capacity.of(other)?.let {
+        Text(
+            "${className(other)}: ${capacityLabel(it).lowercase()} at the fullest",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
     }
 }
+
+@Composable
+private fun SectionRow(stretch: String, level: Int?) {
+    Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        val (bg, _) = occupancyColors(level)
+        Box(Modifier.size(12.dp).background(bg, CircleShape))
+        Spacer(Modifier.width(8.dp))
+        Text(stretch, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(level?.let { capacityLabel(it).removeSuffix(" occupancy") } ?: "Unknown", style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private fun className(c: TravelClass) = if (c == TravelClass.FIRST) "1st class" else "2nd class"
 
 /** Rate this train from 10% (almost empty) to 110% (no seats, many standing). */
 @Composable

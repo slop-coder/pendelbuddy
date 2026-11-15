@@ -42,7 +42,7 @@ object Ojp {
         <Params>
           <NumberOfResults>$results</NumberOfResults>
           <UseRealtimeData>explanatory</UseRealtimeData>${maxChanges?.let { "\n          <TransferLimit>$it</TransferLimit>" } ?: ""}
-          <IncludeIntermediateStops>false</IncludeIntermediateStops>
+          <IncludeIntermediateStops>true</IncludeIntermediateStops>
         </Params>
       </OJPTripRequest>
     </siri:ServiceRequest>
@@ -100,8 +100,14 @@ object Ojp {
         val service = l.child("Service")
         val dep = board.child("ServiceDeparture") ?: return null
         val arr = alight.child("ServiceArrival") ?: return null
-        val occupancy = board.all("ExpectedDepartureOccupancy").associate { o ->
-            o.child("FareClass")?.textContent?.trim() to LEVELS[o.child("OccupancyLevel")?.textContent?.trim()]
+        // Occupancy when leaving each stop of the ride: the boarding stop and every stop in between.
+        val calls = (listOf(board) + l.children("LegIntermediate")).mapNotNull { stop ->
+            Call(
+                id = uic(stop.child("StopPointRef")?.textContent?.trim().orEmpty()),
+                name = stop.child("StopPointName")?.text().orEmpty(),
+                departure = time(stop.child("ServiceDeparture")?.child("TimetabledTime")) ?: return@mapNotNull null,
+                capacity = occupancy(stop),
+            )
         }
         return Leg(
             line = service?.let(::lineName) ?: "?",
@@ -116,11 +122,20 @@ object Ojp {
             platform = quay(board),
             arrivalDelay = delay(arr),
             arrivalPlatform = quay(alight),
-            capacity = Capacity(occupancy["firstClass"], occupancy["secondClass"]),
+            // The fullest stretch counts: will there be a seat the whole way?
+            capacity = Capacity.worst(calls.map { it.capacity }),
             trainNumber = service?.child("TrainNumber")?.textContent?.trim()?.trimStart('0')?.takeIf { it.isNotEmpty() },
             cancelled = service?.child("Cancelled")?.textContent?.trim() == "true" ||
                 listOf(board, alight).any { it.child("NotServicedStop")?.textContent?.trim() == "true" },
+            calls = calls,
         )
+    }
+
+    private fun occupancy(stop: Element): Capacity {
+        val byClass = stop.children("ExpectedDepartureOccupancy").associate { o ->
+            o.child("FareClass")?.textContent?.trim() to LEVELS[o.child("OccupancyLevel")?.textContent?.trim()]
+        }
+        return Capacity(byClass["firstClass"], byClass["secondClass"])
     }
 
     /** Transfer and walking legs, starting at [start] unless they carry their own time window. */

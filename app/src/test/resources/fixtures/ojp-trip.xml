@@ -24,6 +24,14 @@
                   <ExpectedDepartureOccupancy><FareClass>firstClass</FareClass><OccupancyLevel>manySeatsAvailable</OccupancyLevel></ExpectedDepartureOccupancy>
                   <ExpectedDepartureOccupancy><FareClass>secondClass</FareClass><OccupancyLevel>standingRoomOnly</OccupancyLevel></ExpectedDepartureOccupancy>
                 </LegBoard>
+                <LegIntermediate>
+                  <siri:StopPointRef>ch:1:sloid:99009:0:1</siri:StopPointRef>
+                  <StopPointName><Text xml:lang="de">Mittelberg</Text></StopPointName>
+                  <ServiceArrival><TimetabledTime>2026-11-16T06:41:00Z</TimetabledTime></ServiceArrival>
+                  <ServiceDeparture><TimetabledTime>2026-11-16T06:42:00Z</TimetabledTime></ServiceDeparture>
+                  <siri:ExpectedDepartureOccupancy><siri:FareClass>firstClass</siri:FareClass><siri:OccupancyLevel>fewSeatsAvailable</siri:OccupancyLevel></siri:ExpectedDepartureOccupancy>
+                  <siri:ExpectedDepartureOccupancy><siri:FareClass>secondClass </siri:FareClass><siri:OccupancyLevel>manySeatsAvailable</siri:OccupancyLevel></siri:ExpectedDepartureOccupancy>
+                </LegIntermediate>
                 <LegAlight>
                   <siri:StopPointRef>ch:1:sloid:99002:3:5</siri:StopPointRef>
                   <StopPointName><Text xml:lang="de">Musterdorf</Text></StopPointName>

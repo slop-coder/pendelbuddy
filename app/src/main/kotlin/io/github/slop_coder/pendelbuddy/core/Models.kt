@@ -76,6 +76,13 @@ data class Capacity(val first: Int? = null, val second: Int? = null) {
     }
 }
 
+/** A stop the train leaves from on your ride (where you board, or one in between), with the occupancy from there on. */
+@Serializable
+data class Call(val id: String, val name: String, val departure: Long, val capacity: Capacity = Capacity())
+
+/** A stretch of a ride with one occupancy level in your class (consecutive stops with the same level are joined). */
+data class Section(val from: String, val to: String, val level: Int?)
+
 @Serializable
 data class Leg(
     /** "IC 8", "S 3", "B 10"; null for walking. */
@@ -96,8 +103,23 @@ data class Leg(
     /** Train number without leading zeros, e.g. "10809"; kept with ratings. */
     val trainNumber: String? = null,
     val cancelled: Boolean = false,
+    /** Boarding stop and stops in between, each with the occupancy when leaving it; [capacity] is their worst. */
+    val calls: List<Call> = emptyList(),
 ) {
     val walk get() = line == null
+
+    /** The ride split where the occupancy in [cls] changes, e.g. "A → B: low", "B → C: high". */
+    fun sections(cls: TravelClass): List<Section> {
+        val out = mutableListOf<Section>()
+        calls.forEachIndexed { i, c ->
+            val to = calls.getOrNull(i + 1)?.name ?: toName
+            val level = c.capacity.of(cls)
+            val last = out.lastOrNull()
+            if (last != null && last.level == level) out[out.size - 1] = last.copy(to = to)
+            else out += Section(c.name, to, level)
+        }
+        return out
+    }
 
     fun expectedDeparture() = departure + 60L * (departureDelay ?: 0)
     fun expectedArrival() = arrival + 60L * (arrivalDelay ?: 0)
@@ -142,7 +164,9 @@ data class Trip(
     fun timetableOnly() = copy(
         departureDelay = null,
         arrivalDelay = null,
-        legs = legs.map { it.copy(departureDelay = null, capacity = Capacity()) },
+        legs = legs.map { l ->
+            l.copy(departureDelay = null, capacity = Capacity(), calls = l.calls.map { it.copy(capacity = Capacity()) })
+        },
     )
 
     fun withoutDelays() = copy(departureDelay = null, arrivalDelay = null, legs = legs.map { it.copy(departureDelay = null, arrivalDelay = null) })
