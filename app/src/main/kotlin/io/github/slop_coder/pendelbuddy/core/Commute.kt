@@ -68,6 +68,20 @@ object Commute {
         }
     }
 
+    /**
+     * Earlier departures (up to [count], latest first, within an hour) of [t]'s first ride: the same line from
+     * the same stop, found among the other trips known for that day. For leaving earlier, e.g. to buy breakfast.
+     */
+    fun earlierDepartures(t: Trip, known: List<Trip>, count: Int = 2): List<Long> {
+        val first = t.trains.firstOrNull() ?: return emptyList()
+        return known.mapNotNull { other -> other.trains.firstOrNull()?.takeIf { it.line == first.line && it.fromId == first.fromId } }
+            .map { it.departure }
+            .filter { it < first.departure && it >= first.departure - 3600 }
+            .distinct()
+            .sortedDescending()
+            .take(count)
+    }
+
     /** The dates behind the Mo–Su tabs: each the next such day from [today] on (on a Wednesday, Mo is next week's). */
     fun weekDays(today: LocalDate): List<LocalDate> =
         DayOfWeek.entries.map { dow -> today.plusDays(((dow.value - today.dayOfWeek.value + 7) % 7).toLong()) }

@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,6 +54,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,25 +96,22 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
     var keyDialog by remember { mutableStateOf(false) }
     var bufferDialog by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Station?>(null) }
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        uri?.let(vm::exportRatings)
+    // Changes are saved when you leave the tab (or, on first setup, as soon as home and work are set).
+    var saved by remember { mutableStateOf(initial) }
+    fun save() {
+        if (s != saved) vm.saveSettings(s)
+        saved = s
     }
+    DisposableEffect(Unit) { onDispose { save() } }
 
     fun done() {
-        if (s != initial) vm.saveSettings(s)
+        save()
         onDone()
     }
-    BackHandler(enabled = initial.complete) { done() }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = {
-                    if (s.complete) IconButton(onClick = ::done) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Done") }
-                },
-            )
-        },
+        topBar = { TopAppBar(title = { Text("Settings") }) },
+        contentWindowInsets = WindowInsets(0),
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState())) {
             if (!s.complete) {
@@ -235,27 +234,6 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
                 },
             )
 
-            Header("Your fullness ratings")
-            ListItem(
-                headlineContent = { Text("${status.ratingCount} rating${if (status.ratingCount == 1) "" else "s"} saved") },
-                supportingContent = {
-                    Column {
-                        Text("All ratings are kept, with the forecast shown when you rated.")
-                        for (c in status.forecastChecks) {
-                            Text(
-                                (c.level?.let { capacityLabel(it) } ?: "No forecast") + ": you rated ${c.mean}% on average (${c.count}×)",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                },
-                leadingContent = { Icon(Icons.Filled.Groups, null) },
-                trailingContent = {
-                    TextButton(onClick = { export.launch("pendelbuddy-ratings-${LocalDate.now()}.csv") }, enabled = status.ratingCount > 0) {
-                        Text("Export CSV")
-                    }
-                },
-            )
             Spacer(Modifier.size(24.dp))
             Text(
                 "Timetable and occupancy: OJP 2.0 (opentransportdata.swiss) or transport.opendata.ch · " +

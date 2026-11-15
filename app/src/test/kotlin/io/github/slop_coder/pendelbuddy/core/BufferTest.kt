@@ -50,6 +50,17 @@ class BufferTest {
     }
 
     @Test
+    fun earlierBuses() {
+        val trips = listOf(bus(at(6, 30), at(6, 40)), bus(at(6, 40), at(6, 50)), bus(at(6, 50), at(7, 0)), bus(at(7, 0), at(7, 10)))
+        // Before the 07:00 bus: 06:50 and 06:40 (latest first, at most two).
+        assertEquals(listOf(at(6, 50), at(6, 40)), Commute.earlierDepartures(trips[3], trips))
+        assertEquals(emptyList<Long>(), Commute.earlierDepartures(trips[0], trips))
+        // Another line from the same stop does not count.
+        val other = trips[2].copy(legs = trips[2].legs.map { it.copy(line = "B 9") })
+        assertEquals(listOf(at(6, 40), at(6, 30)), Commute.earlierDepartures(trips[3], listOf(trips[0], trips[1], other, trips[3])))
+    }
+
+    @Test
     fun marginOnlyOnTheNormalCommute() {
         assertEquals(margin, Commute.bufferFor(settings, Route(talwil, beispielstadt, Direction.TO_WORK)))
         assertNull(Commute.bufferFor(settings, Route(beispielstadt, talwil, Direction.TO_HOME)))

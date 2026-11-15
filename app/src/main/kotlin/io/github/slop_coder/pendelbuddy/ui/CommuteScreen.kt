@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -79,7 +79,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, onTrip: (TripRow) -> Unit) {
+fun CommuteScreen(vm: MainViewModel, st: CommuteState, onTrip: (TripRow) -> Unit) {
     var searching by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
 
@@ -101,7 +101,6 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
                             label = { Text(st.time?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "Now") },
                             leadingIcon = { Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)) },
                         )
-                        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Settings") }
                     },
                 )
                 DayTabs(st, vm::selectDay)
@@ -111,6 +110,7 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
                 }
             }
         },
+        contentWindowInsets = WindowInsets(0),
         bottomBar = {
             StationBar(
                 picks = Commute.quickPicks(st.settings, st.route?.direction ?: Direction.TO_WORK),
@@ -128,7 +128,7 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
         ) {
             LazyColumn(Modifier.fillMaxSize()) {
                 item { RouteHeader(st, onFlip = vm::flipDirection) }
-                st.weather?.let { w -> item { WeatherCard(w, st.weatherPlace.orEmpty(), st.now, st.at) } }
+                if (st.weather.isNotEmpty()) item { WeatherCard(st.weather, st.now, st.at) }
                 if (st.rows.isEmpty() && !st.loading) {
                     item {
                         Text(
@@ -350,7 +350,7 @@ private fun StationBar(
     onSearch: () -> Unit,
 ) {
     Surface(Modifier.fillMaxWidth(), tonalElevation = 3.dp) {
-        Column(Modifier.navigationBarsPadding().padding(vertical = 6.dp)) {
+        Column(Modifier.padding(vertical = 6.dp)) {
             Text(
                 "I'm at…",
                 Modifier.padding(horizontal = 16.dp),

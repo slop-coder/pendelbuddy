@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,7 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -91,7 +93,8 @@ fun TripScreen(vm: MainViewModel, row: TripRow, cls: TravelClass, onBack: () -> 
                 )
             }
             for (leg in t.legs) {
-                if (leg.walk) WalkRow(leg) else TrainCard(vm, leg, cls, canRate = row.copiedFrom == null)
+                val earlier = if (leg == t.trains.firstOrNull()) row.earlier else emptyList()
+                if (leg.walk) WalkRow(leg) else TrainCard(vm, leg, cls, canRate = row.copiedFrom == null, earlier = earlier)
             }
         }
     }
@@ -113,7 +116,7 @@ private fun WalkRow(leg: Leg) {
 }
 
 @Composable
-private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Boolean) {
+private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Boolean, earlier: List<Long>) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -128,6 +131,15 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
             if (leg.cancelled) Text("Cancelled", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             Spacer(Modifier.size(8.dp))
             Stop(leg.departure, leg.departureDelay, leg.fromName, leg.platform)
+            if (earlier.isNotEmpty()) {
+                // Leaving earlier for safety or to buy food: the same line's departures before this one.
+                Text(
+                    "Also at " + earlier.joinToString(", ") { hm(it) },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
+                )
+            }
             Stop(leg.arrival, leg.arrivalDelay, leg.toName, leg.arrivalPlatform)
             Spacer(Modifier.size(8.dp))
             Forecast(leg, cls)
@@ -138,7 +150,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
                 )
             }
             if (canRate) {
-                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 RatingBar(vm, leg)
             }
         }
@@ -168,9 +180,8 @@ private fun Stop(time: Long, delay: Int?, station: String, platform: String?) {
  */
 @Composable
 private fun Forecast(leg: Leg, cls: TravelClass) {
-    val other = if (cls == TravelClass.FIRST) TravelClass.SECOND else TravelClass.FIRST
     val sections = leg.sections(cls)
-    if (leg.capacity.first == null && leg.capacity.second == null) {
+    if (leg.capacity.of(cls) == null) {
         Text("No occupancy forecast", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
@@ -180,14 +191,6 @@ private fun Forecast(leg: Leg, cls: TravelClass) {
         SectionRow("${leg.fromName} → ${leg.toName}", leg.capacity.of(cls))
     } else {
         for (sec in sections) SectionRow("${sec.from} → ${sec.to}", sec.level)
-    }
-    leg.capacity.of(other)?.let {
-        Text(
-            "${className(other)}: ${capacityLabel(it).lowercase()} at the fullest",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 2.dp),
-        )
     }
 }
 
@@ -210,27 +213,29 @@ private fun RatingBar(vm: MainViewModel, leg: Leg) {
     var saved by remember(leg) { mutableStateOf(vm.ratingFor(leg)?.percent) }
     var value by remember(leg) { mutableFloatStateOf((saved ?: 50).toFloat()) }
     val percent = (value / Ratings.STEP).roundToInt() * Ratings.STEP
-    Text("How full is it?", style = MaterialTheme.typography.labelLarge)
-    Text("$percent% · ${Ratings.label(percent)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    // Rating a train before or after the day it runs is allowed, but say which run it is.
+    val other = leg.departure.toSwiss().toLocalDate().takeIf { it != LocalDate.now(SWISS) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("$percent% · ${Ratings.label(percent)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                (saved?.let { "Saved: $it%" } ?: "How full is it?") + (other?.let { " · ${day(it)}" } ?: ""),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        FilledTonalButton(
+            onClick = { vm.rate(leg, percent); saved = percent },
+            enabled = saved != percent,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+            modifier = Modifier.height(34.dp),
+        ) { Text(if (saved == null) "Save" else "Update") }
+    }
     Slider(
         value = value,
         onValueChange = { value = it },
         valueRange = Ratings.SCALE.first.toFloat()..Ratings.SCALE.last.toFloat(),
         steps = (Ratings.SCALE.last - Ratings.SCALE.first) / Ratings.STEP - 1,
+        modifier = Modifier.height(32.dp),
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            saved?.let { "Saved: $it%" } ?: "Not rated yet",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Button(onClick = { vm.rate(leg, percent); saved = percent }, enabled = saved != percent) {
-            Text(if (saved == null) "Save" else "Update")
-        }
-    }
-    // Rating a train hours before or after it runs is allowed, but say which run it is.
-    if (leg.departure.toSwiss().toLocalDate() != LocalDate.now(SWISS)) {
-        Text("For the train of ${day(leg.departure.toSwiss().toLocalDate())}", style = MaterialTheme.typography.bodySmall)
-    }
 }

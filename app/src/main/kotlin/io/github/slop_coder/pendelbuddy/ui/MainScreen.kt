@@ -1,8 +1,21 @@
 package io.github.slop_coder.pendelbuddy.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.StarRate
+import androidx.compose.material.icons.filled.Train
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -12,16 +25,53 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+
+private enum class Tab(val label: String, val icon: ImageVector) {
+    TRIPS("Trips", Icons.Filled.Train),
+    RATINGS("Ratings", Icons.Filled.StarRate),
+    DEBUG("Debug", Icons.Filled.BugReport),
+    SETTINGS("Settings", Icons.Filled.Settings),
+}
 
 @Composable
 fun MainScreen(vm: MainViewModel) {
     val st by vm.state.collectAsState()
-    var settings by rememberSaveable { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableStateOf(Tab.TRIPS) }
     var trip by remember { mutableStateOf<TripRow?>(null) }
-    when {
-        !st.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        settings || !st.settings.complete -> SettingsScreen(vm, st, onDone = { settings = false })
-        trip != null -> TripScreen(vm, trip!!, st.settings.travelClass, onBack = { trip = null })
-        else -> CommuteScreen(vm, st, onSettings = { settings = true }, onTrip = { trip = it })
+    if (!st.loaded) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    // Until home and work are set there is nothing else to show.
+    val current = if (st.settings.complete) tab else Tab.SETTINGS
+    if (current == Tab.TRIPS && trip != null) {
+        TripScreen(vm, trip!!, st.settings.travelClass, onBack = { trip = null })
+        return
+    }
+    BackHandler(enabled = current != Tab.TRIPS && st.settings.complete) { tab = Tab.TRIPS }
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                for (t in Tab.entries) {
+                    NavigationBarItem(
+                        selected = current == t,
+                        onClick = { tab = t },
+                        icon = { Icon(t.icon, null) },
+                        label = { Text(t.label) },
+                        enabled = st.settings.complete || t == Tab.SETTINGS,
+                    )
+                }
+            }
+        },
+    ) { pad ->
+        Box(Modifier.padding(pad).consumeWindowInsets(pad)) {
+            when (current) {
+                Tab.TRIPS -> CommuteScreen(vm, st, onTrip = { trip = it })
+                Tab.RATINGS -> RatingsScreen(vm, st)
+                Tab.DEBUG -> DebugScreen(vm, st)
+                Tab.SETTINGS -> SettingsScreen(vm, st, onDone = { tab = Tab.TRIPS })
+            }
+        }
     }
 }

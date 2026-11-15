@@ -2,6 +2,7 @@ package io.github.slop_coder.pendelbuddy.data
 
 import android.content.Context
 import android.util.Log
+import io.github.slop_coder.pendelbuddy.core.DebugEntry
 import io.github.slop_coder.pendelbuddy.core.Forecast
 import io.github.slop_coder.pendelbuddy.core.Rating
 import io.github.slop_coder.pendelbuddy.core.RouteCache
@@ -33,6 +34,10 @@ class Store(context: Context) {
     /** Forecasts by station id. */
     suspend fun forecasts() = read("forecasts.json", forecastMap).orEmpty()
     suspend fun saveForecasts(f: Map<String, Forecast>) = write("forecasts.json", forecastMap, f)
+
+    /** Requests that went to the network, newest first. */
+    suspend fun debugLog() = read("debug-log.json", ListSerializer(DebugEntry.serializer())).orEmpty()
+    suspend fun saveDebugLog(l: List<DebugEntry>) = write("debug-log.json", ListSerializer(DebugEntry.serializer()), l)
 
     /** Files of features that were removed (the occupancy forecast download, now part of OJP). */
     suspend fun dropOldFiles() = withContext(Dispatchers.IO) { File(dir, "occupancy.json").delete() }
