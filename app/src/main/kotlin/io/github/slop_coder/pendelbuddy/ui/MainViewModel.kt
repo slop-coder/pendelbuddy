@@ -77,6 +77,11 @@ data class CommuteState(
     /** Where the last timetable came from, or what went wrong with OJP. */
     val source: String? = null,
     val ojpProblem: String? = null,
+    /** The day and time picked at the top; null = today / now. */
+    val day: LocalDate? = null,
+    val time: LocalTime? = null,
+    /** The moment trips are shown for (now, or the picked day and time), epoch seconds. */
+    val at: Long = System.currentTimeMillis() / 1000,
     /** Number of ratings saved, and how they compare with the forecast. */
     val ratingCount: Int = 0,
     val forecastChecks: List<ForecastCheck> = emptyList(),
@@ -178,6 +183,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Picks the day at the top (today = back to today). */
+    fun selectDay(d: LocalDate) {
+        val today = nowSec().toSwiss().toLocalDate()
+        _state.update { it.copy(day = d.takeIf { it != today }) }
+        viewModelScope.launch { refresh() }
+    }
+
+    /** Picks the time at the top; null = now. */
+    fun selectTime(t: LocalTime?) {
+        _state.update { it.copy(time = t) }
+        viewModelScope.launch { refresh() }
+    }
+
+    /** One download per route and selection: now, or a picked day at a picked time (or at "the current time"). */
+    private fun fetchKey(r: Route): String {
+        val st = _state.value
+        val sel = if (isLive()) "now" else "${st.day ?: "today"}-${st.time ?: "clock"}"
+        return "${r.from.id}-${r.to.id}-$sel"
+    }
+
+    /** Showing the trips from right now (not a picked day or time). */
+    private fun isLive() = _state.value.day == null && _state.value.time == null
+
+    /** The picked moment: now, or the picked day at the picked time (or at the current time of day). */
+    private fun queryTime(): Long {
+        val now = nowSec()
+        val st = _state.value
+        val today = now.toSwiss().toLocalDate()
+        // A picked day that has passed (the app stayed open overnight) goes back to today.
+        if (st.day != null && st.day.isBefore(today)) _state.update { it.copy(day = null) }
+        if (isLive()) return now
+        val date = _state.value.day ?: today
+        val time = st.time ?: now.toSwiss().toLocalTime().withSecond(0).withNano(0)
+        return date.atTime(time).atZone(SWISS).toEpochSecond()
+    }
+
     fun pullToRefresh() {
         viewModelScope.launch { refresh(force = true) }
     }
@@ -250,7 +291,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun nowSec() = System.currentTimeMillis() / 1000
 
-    private fun autoDirection() = Commute.direction(_state.value.settings, nowSec().toSwiss())
+    private fun autoDirection() = Commute.direction(_state.value.settings, queryTime().toSwiss())
 
     private fun overrideDirection(d: Direction) {
         directionOverride = d to autoDirection()
@@ -272,16 +313,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun refresh(force: Boolean = false) {
         render()
         val route = currentRoute() ?: return
-        val key = "${route.from.id}-${route.to.id}"
         val now = nowSec()
+        val at = queryTime()
+        val live = isLive()
+        val key = fetchKey(route)
         if (!force && key in fetchedThisVisit) return
         fetchedThisVisit += key
         fetchLock.withLock {
             _state.update { it.copy(loading = true) }
             try {
-                val fresh = plan(route, now - LOOK_BACK, limit = 8)
+                val fresh = plan(route, if (live) now - LOOK_BACK else at, limit = 8)
                 store.saveRoute(store.route(route.from.id, route.to.id).merge(fresh, now))
                 lastFetch[key] = now
+
                 _state.update { it.copy(offline = false) }
                 prefillCommute(now)
             } catch (e: Exception) {
@@ -368,30 +412,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun render() {
         val st = _state.value
         val now = nowSec()
+        val at = queryTime()
         val route = currentRoute()
         if (route == null) {
-            _state.update { it.copy(route = null, rows = emptyList(), quickest = null, weather = null, now = now) }
+            _state.update { it.copy(route = null, rows = emptyList(), quickest = null, weather = null, now = now, at = at) }
             return
         }
         val cls = st.settings.travelClass
         val buffer = Commute.bufferFor(st.settings, route)
         val rows = store.route(route.from.id, route.to.id)
-            .project(now.toSwiss().toLocalDate())
+            .project(at.toSwiss().toLocalDate())
             .filter { Commute.allowed(it.trip, st.settings, buffer) }
-            .upcoming(now, count = 8)
+            .upcoming(at, count = 8, now = now)
             .map { TripRow(it.trip, it.copiedFrom, Ratings.forTrip(ratings, it.trip, cls)) }
-        val quickest = Commute.quickest(rows.map { it.trip }, now)?.let { q -> rows.first { it.trip == q } }
+        val quickest = Commute.quickest(rows.map { it.trip }, maxOf(at, now))?.let { q -> rows.first { it.trip == q } }
         val weather = forecasts[route.to.id]
             ?.takeIf { now - it.fetchedAt <= Freshness.WEATHER }
-            ?.at(quickest?.trip?.expectedArrival() ?: now)
+            ?.at(quickest?.trip?.expectedArrival() ?: at)
         _state.update {
             it.copy(
                 route = route,
                 rows = rows,
                 quickest = quickest,
                 weather = weather,
-                liveAt = lastFetch["${route.from.id}-${route.to.id}"],
+                liveAt = lastFetch[fetchKey(route)],
                 now = now,
+                at = at,
             )
         }
     }

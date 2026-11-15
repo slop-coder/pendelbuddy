@@ -102,7 +102,7 @@ object WeatherClient {
         Http.text(
             "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
                 "&hourly=temperature_2m,weather_code&daily=temperature_2m_max,weather_code" +
-                "&models=meteoswiss_icon_ch2&timezone=Europe%2FZurich&forecast_days=3"
+                "&models=meteoswiss_icon_ch2&timezone=Europe%2FZurich&forecast_days=5"
         ),
         now,
     )

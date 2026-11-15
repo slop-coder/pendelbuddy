@@ -77,6 +77,18 @@ class CacheTest {
     }
 
     @Test
+    fun plannedTimeLaterInTheDay() {
+        val now = at(2026, 11, 16, 7, 10)
+        val cache = RouteCache("A", "B").merge(
+            listOf(trip(at(2026, 11, 16, 7, 30), delay = 3), trip(at(2026, 11, 16, 17, 0)), trip(at(2026, 11, 16, 17, 30))),
+            now,
+        )
+        // Trips from 17:00 on; the delay of the 07:30 is still fresh, it just is not in the picked window.
+        val shown = cache.project(mon16).upcoming(at(2026, 11, 16, 17, 0), 5, now = now + 60)
+        assertEquals(listOf("17:00", "17:30"), shown.map { it.trip.departure.toSwiss().toLocalTime().toString() })
+    }
+
+    @Test
     fun upcomingSkipsGoneTrains() {
         val now = at(2026, 11, 16, 7, 10)
         val cache = RouteCache("A", "B").merge(

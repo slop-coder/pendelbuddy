@@ -1,6 +1,7 @@
 package io.github.slop_coder.pendelbuddy.core
 
 import kotlinx.serialization.Serializable
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlin.math.asin
@@ -39,6 +40,10 @@ object Commute {
         if (from.id == to.id) return null
         return Route(from, to, direction)
     }
+
+    /** The dates behind the Mo–Su tabs: each the next such day from [today] on (on a Wednesday, Mo is next week's). */
+    fun weekDays(today: LocalDate): List<LocalDate> =
+        DayOfWeek.entries.map { dow -> today.plusDays(((dow.value - today.dayOfWeek.value + 7) % 7).toLong()) }
 
     /**
      * Stations offered as quick picks at the bottom, in the order you pass them: home, the stations in between

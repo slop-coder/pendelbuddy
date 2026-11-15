@@ -43,6 +43,16 @@ class CommuteTest {
     }
 
     @Test
+    fun weekDayTabs() {
+        val wednesday = java.time.LocalDate.of(2026, 11, 18)
+        val days = Commute.weekDays(wednesday)
+        assertEquals(java.time.LocalDate.of(2026, 11, 23), days[0]) // Mo: next week
+        assertEquals(java.time.LocalDate.of(2026, 11, 24), days[1]) // Tu: next week
+        assertEquals(wednesday, days[2])
+        assertEquals(java.time.LocalDate.of(2026, 11, 22), days[6]) // Su: this week
+    }
+
+    @Test
     fun quickestArrival() {
         val a = Trip("1", "3", departure = 1000, arrival = 5000)
         val b = Trip("1", "3", departure = 1300, arrival = 4000)

@@ -22,10 +22,13 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,7 +38,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -60,18 +68,34 @@ import io.github.slop_coder.pendelbuddy.core.Station
 import io.github.slop_coder.pendelbuddy.core.Trip
 import io.github.slop_coder.pendelbuddy.core.TravelClass
 import io.github.slop_coder.pendelbuddy.core.WeatherAt
+import io.github.slop_coder.pendelbuddy.core.toSwiss
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.TextStyle
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, onTrip: (TripRow) -> Unit) {
     var searching by remember { mutableStateOf(false) }
+    var pickingTime by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Pendel Buddy") },
-                actions = { IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Settings") } },
-            )
+            Column {
+                TopAppBar(
+                    title = { Text("Pendel Buddy") },
+                    actions = {
+                        AssistChip(
+                            onClick = { pickingTime = true },
+                            label = { Text(st.time?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "Now") },
+                            leadingIcon = { Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)) },
+                        )
+                        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Settings") }
+                    },
+                )
+                DayTabs(st, vm::selectDay)
+            }
         },
         bottomBar = {
             StationBar(
@@ -90,7 +114,7 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
         ) {
             LazyColumn(Modifier.fillMaxSize()) {
                 item { RouteHeader(st, onFlip = vm::flipDirection) }
-                st.quickest?.let { q -> item { QuickestCard(q, st.weather, st.settings.travelClass, st.now, onClick = { onTrip(q) }) } }
+                st.quickest?.let { q -> item { QuickestCard(q, st.weather, st.settings.travelClass, st.now, live = st.day == null && st.time == null, onClick = { onTrip(q) }) } }
                 if (st.rows.isEmpty() && !st.loading) {
                     item {
                         Text(
@@ -109,6 +133,9 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
         }
     }
 
+    if (pickingTime) {
+        TimeDialog(st, onPick = { vm.selectTime(it); pickingTime = false }, onDismiss = { pickingTime = false })
+    }
     if (searching) {
         StationSearchDialog(
             vm = vm,
@@ -117,6 +144,48 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
             onDismiss = { searching = false },
         )
     }
+}
+
+/** Mo–Su; each is the next such day from today on (on a Wednesday, Mo and Tu are next week's). */
+@Composable
+private fun DayTabs(st: CommuteState, onPick: (LocalDate) -> Unit) {
+    val today = st.now.toSwiss().toLocalDate()
+    val selected = st.day ?: today
+    val days = Commute.weekDays(today)
+    PrimaryTabRow(selectedTabIndex = days.indexOf(selected).coerceAtLeast(0)) {
+        for (d in days) {
+            Tab(
+                selected = d == selected,
+                onClick = { onPick(d) },
+                text = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(d.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).take(2), fontWeight = if (d == today) FontWeight.Bold else null)
+                        Text(d.dayOfMonth.toString(), style = MaterialTheme.typography.labelSmall)
+                    }
+                },
+            )
+        }
+    }
+}
+
+/** Time picker for the trips shown, starting at the picked (or current) time, with a way back to "now". */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeDialog(st: CommuteState, onPick: (LocalTime?) -> Unit, onDismiss: () -> Unit) {
+    val start = st.time ?: st.now.toSwiss().toLocalTime()
+    val state = rememberTimePickerState(start.hour, start.minute, is24Hour = true)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Trips from") },
+        text = { TimePicker(state) },
+        confirmButton = { TextButton(onClick = { onPick(LocalTime.of(state.hour, state.minute)) }) { Text("OK") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { onPick(null) }) { Text("Now") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
 }
 
 @Composable
@@ -140,11 +209,13 @@ private fun RouteHeader(st: CommuteState, onFlip: () -> Unit) {
 private fun status(st: CommuteState): String {
     val copied = st.rows.firstNotNullOfOrNull { it.copiedFrom }
     val live = st.liveAt
-    return when {
+    // A picked day or time: say which, before where the data comes from.
+    val planned = if (st.day == null && st.time == null) "" else "${day(st.at.toSwiss().toLocalDate())}, ${hm(st.at)} · "
+    return planned + when {
         st.offline && copied != null -> "Offline · timetable of ${day(copied)}, no delays or occupancy"
         st.offline && live != null -> "Offline · last update ${ago(st.now - live)}"
         st.offline -> "Offline · saved timetable"
-        live != null -> "Live" + (st.source?.let { " · $it" } ?: "") + " · updated ${ago(st.now - live)}" +
+        live != null -> (if (planned.isEmpty()) "Live" else "Fetched") + (st.source?.let { " · $it" } ?: "") + " · updated ${ago(st.now - live)}" +
             if (st.now - live > 10 * 60) " · pull down to refresh" else ""
         copied != null -> "Saved timetable of ${day(copied)}"
         else -> "Loading…"
@@ -152,7 +223,7 @@ private fun status(st: CommuteState): String {
 }
 
 @Composable
-private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, now: Long, onClick: () -> Unit) {
+private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, now: Long, live: Boolean, onClick: () -> Unit) {
     val t = row.trip
     Card(
         onClick = onClick,
@@ -165,7 +236,11 @@ private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, no
                 Spacer(Modifier.width(6.dp))
                 val minutes = (t.expectedDeparture() - now) / 60
                 Text(
-                    "Fastest arrival · " + if (minutes < 1) "leave now" else "leave in $minutes min",
+                    "Fastest arrival · " + when {
+                        !live -> "leave ${hm(t.expectedDeparture())}"
+                        minutes < 1 -> "leave now"
+                        else -> "leave in $minutes min"
+                    },
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
@@ -186,7 +261,10 @@ private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, no
                     )
                 }
             } else {
-                Text("No current weather forecast", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    if (live) "No current weather forecast" else "No weather forecast that far ahead",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }
@@ -314,8 +392,7 @@ private fun StationBar(
                 FilterChip(
                     selected = false,
                     onClick = onSearch,
-                    label = { Text("Other…") },
-                    leadingIcon = { Icon(Icons.Filled.Search, null, Modifier.size(18.dp)) },
+                    label = { Icon(Icons.Filled.Search, "Other station", Modifier.size(18.dp)) },
                 )
             }
         }
