@@ -28,7 +28,42 @@ enum class Sky { SUNNY, PARTLY_CLOUDY, CLOUDY, FOG, RAIN, SNOW, THUNDER;
 }
 
 @Serializable
-data class Hour(val time: Long, val temp: Double, val code: Int)
+data class Hour(val time: Long, val temp: Double, val code: Int, val precipitation: Double = 0.0) {
+    /** How hard it rains or snows: from the weather code (slight / moderate / heavy), else from the mm per hour. */
+    fun intensity(): Intensity? = when (code) {
+        51, 56, 61, 66, 71, 77, 80, 85 -> Intensity.LIGHT
+        53, 63, 73, 81 -> Intensity.MODERATE
+        55, 57, 65, 67, 75, 82, 86, 95, 96, 99 -> Intensity.HEAVY
+        else -> when {
+            precipitation < 0.1 -> null
+            precipitation < 1.0 -> Intensity.LIGHT
+            precipitation < 4.0 -> Intensity.MODERATE
+            else -> Intensity.HEAVY
+        }
+    }
+}
+
+enum class Intensity { LIGHT, MODERATE, HEAVY }
+
+/** A stretch of rain or snow within a day, e.g. "Rain 14–17 h, moderate". */
+data class Precipitation(val snow: Boolean, val fromHour: Int, val toHour: Int, val intensity: Intensity)
+
+/** The weather of one day at one place, as the card shows it. */
+data class DayWeather(
+    val date: LocalDate,
+    /** The hours from [FIRST_HOUR] to [LAST_HOUR]. */
+    val hours: List<Hour>,
+    val min: Double,
+    val max: Double,
+    val sky: Sky,
+    val precipitation: List<Precipitation>,
+    val fetchedAt: Long,
+) {
+    companion object {
+        const val FIRST_HOUR = 5
+        const val LAST_HOUR = 23
+    }
+}
 
 @Serializable
 data class Day(val date: String, val max: Double, val code: Int)
@@ -36,13 +71,10 @@ data class Day(val date: String, val max: Double, val code: Int)
 @Serializable
 data class Forecast(val fetchedAt: Long, val hours: List<Hour>, val days: List<Day>)
 
-/** What the app shows for a place and time. */
-data class WeatherAt(val temp: Double, val max: Double?, val sky: Sky)
-
 object WeatherParser {
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Open-Meteo `/v1/forecast` with `timezone=Europe/Zurich`, hourly temperature_2m,weather_code and daily temperature_2m_max,weather_code. */
+    /** Open-Meteo `/v1/forecast` with `timezone=Europe/Zurich`, hourly temperature_2m,weather_code,precipitation and daily temperature_2m_max,weather_code. */
     fun parse(body: String, fetchedAt: Long): Forecast {
         val root = json.parseToJsonElement(body).jsonObject
         val hourly = root["hourly"] as? JsonObject
@@ -51,9 +83,15 @@ object WeatherParser {
             val times = h.list("time")
             val temps = h.list("temperature_2m")
             val codes = h.list("weather_code")
+            val precips = h.list("precipitation")
             times.indices.mapNotNull { i ->
                 val t = times[i]?.let { LocalDateTime.parse(it).atZone(SWISS).toEpochSecond() } ?: return@mapNotNull null
-                Hour(t, temps.getOrNull(i)?.toDoubleOrNull() ?: return@mapNotNull null, codes.getOrNull(i)?.toIntOrNull() ?: 3)
+                Hour(
+                    t,
+                    temps.getOrNull(i)?.toDoubleOrNull() ?: return@mapNotNull null,
+                    codes.getOrNull(i)?.toIntOrNull() ?: 3,
+                    precips.getOrNull(i)?.toDoubleOrNull() ?: 0.0,
+                )
             }
         }.orEmpty()
         val days = daily?.let { d ->
@@ -71,19 +109,40 @@ object WeatherParser {
         (this[k] as? JsonArray)?.map { (it as? JsonPrimitive)?.takeIf { p -> p !is JsonNull }?.content }.orEmpty()
 }
 
-/** Temperature at [time] (linear between the hours), the worse sky of the hours around it and the day's maximum. */
-fun Forecast.at(time: Long): WeatherAt? {
-    val after = hours.indexOfFirst { it.time >= time }
-    if (after < 0) return null
-    val b = hours[after]
-    val a = hours.getOrNull(after - 1)
-    if (a == null && b.time - time > 3600) return null
-    val temp = if (a == null || b.time == a.time) b.temp
-    else a.temp + (b.temp - a.temp) * (time - a.time).toDouble() / (b.time - a.time)
-    // Sky is ordered from fair to foul: better to warn of rain that is an hour off than to miss it.
-    val sky = listOfNotNull(a, b).maxOf { Sky.ofWmo(it.code) }
-    val date = time.toSwiss().toLocalDate().toString()
-    return WeatherAt(temp, days.firstOrNull { it.date == date }?.max, sky)
+fun Forecast.day(date: LocalDate) = days.firstOrNull { it.date == date.toString() }
+
+/** The card's view of [date]: hours 05–23, min and max, the day's sky and its rain or snow; null if not covered. */
+fun Forecast.dayWeather(date: LocalDate): DayWeather? {
+    val hours = hours.filter {
+        val t = it.time.toSwiss()
+        t.toLocalDate() == date && t.hour in DayWeather.FIRST_HOUR..DayWeather.LAST_HOUR
+    }
+    if (hours.size < 6) return null
+    val sky = day(date)?.code?.let(Sky::ofWmo) ?: hours.maxOf { Sky.ofWmo(it.code) }
+    return DayWeather(
+        date = date,
+        hours = hours,
+        min = hours.minOf { it.temp },
+        max = day(date)?.max ?: hours.maxOf { it.temp },
+        sky = sky,
+        precipitation = precipitationSpans(hours),
+        fetchedAt = fetchedAt,
+    )
 }
 
-fun Forecast.day(date: LocalDate) = days.firstOrNull { it.date == date.toString() }
+/** Consecutive wet hours joined into stretches, each with its strongest intensity. */
+fun precipitationSpans(hours: List<Hour>): List<Precipitation> {
+    val out = mutableListOf<Precipitation>()
+    for (h in hours) {
+        val i = h.intensity() ?: continue
+        val hour = h.time.toSwiss().hour
+        val snow = Sky.ofWmo(h.code) == Sky.SNOW
+        val last = out.lastOrNull()
+        if (last != null && last.toHour == hour && last.snow == snow) {
+            out[out.size - 1] = last.copy(toHour = hour + 1, intensity = maxOf(last.intensity, i))
+        } else {
+            out += Precipitation(snow, hour, hour + 1, i)
+        }
+    }
+    return out
+}

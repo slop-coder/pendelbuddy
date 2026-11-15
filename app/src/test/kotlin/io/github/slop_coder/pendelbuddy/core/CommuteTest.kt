@@ -53,20 +53,6 @@ class CommuteTest {
     }
 
     @Test
-    fun quickestArrival() {
-        val a = Trip("1", "3", departure = 1000, arrival = 5000)
-        val b = Trip("1", "3", departure = 1300, arrival = 4000)
-        val c = Trip("1", "3", departure = 1100, arrival = 3000, departureDelay = 1)
-        // c (leaving 1100, 1 min late) arrives first.
-        assertEquals(c, Commute.quickest(listOf(a, b, c), now = 1000))
-        // Once c has left, b is next best.
-        assertEquals(b, Commute.quickest(listOf(a, b, c), now = 1200))
-        // Same arrival: prefer leaving later.
-        val d = Trip("1", "3", departure = 1350, arrival = 4000)
-        assertEquals(d, Commute.quickest(listOf(b, d), now = 1200))
-    }
-
-    @Test
     fun ratings() {
         val dep = LocalDateTime.of(2026, 11, 16, 7, 2).atZone(SWISS).toEpochSecond()
         val leg = Leg("IC 8", fromId = "1", fromName = "Talwil", toName = "Zwischenau", departure = dep, arrival = dep + 1200)

@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -70,7 +71,6 @@ import io.github.slop_coder.pendelbuddy.core.ShortNames
 import io.github.slop_coder.pendelbuddy.core.Station
 import io.github.slop_coder.pendelbuddy.core.Trip
 import io.github.slop_coder.pendelbuddy.core.TravelClass
-import io.github.slop_coder.pendelbuddy.core.WeatherAt
 import io.github.slop_coder.pendelbuddy.core.toSwiss
 import java.time.LocalDate
 import java.time.LocalTime
@@ -128,7 +128,7 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
         ) {
             LazyColumn(Modifier.fillMaxSize()) {
                 item { RouteHeader(st, onFlip = vm::flipDirection) }
-                st.quickest?.let { q -> item { QuickestCard(q, st.weather, st.settings.travelClass, st.now, live = st.day == null && st.time == null, onClick = { onTrip(q) }) } }
+                st.weather?.let { w -> item { WeatherCard(w, st.weatherPlace.orEmpty(), st.now, st.at) } }
                 if (st.rows.isEmpty() && !st.loading) {
                     item {
                         Text(
@@ -139,8 +139,9 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
                         )
                     }
                 }
+                val durations = st.rows.filter { !it.trip.cancelled }.map { it.trip.expectedArrival() - it.trip.expectedDeparture() }
                 items(st.rows) { row ->
-                    TripItem(row, st.settings.travelClass, st.now, onClick = { onTrip(row) })
+                    TripItem(row, st.settings.travelClass, st.now, durationColor(row.trip, durations), onClick = { onTrip(row) })
                     HorizontalDivider()
                 }
             }
@@ -205,87 +206,49 @@ private fun TimeDialog(st: CommuteState, onPick: (LocalTime?) -> Unit, onDismiss
 @Composable
 private fun RouteHeader(st: CommuteState, onFlip: () -> Unit) {
     val route = st.route ?: return
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(
                 if (route.direction == Direction.TO_WORK) "To work" else "Home",
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Text("${route.from.name} → ${route.to.name}", style = MaterialTheme.typography.titleLarge)
-            Text(status(st), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            status(st)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             st.ojpProblem?.let { Text("$it · using transport.opendata.ch", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
         IconButton(onClick = onFlip) { Icon(Icons.Filled.SwapVert, "Other direction") }
     }
 }
 
-private fun status(st: CommuteState): String {
+/** Only when something is off: offline, another day's timetable, or data that is getting old. */
+private fun status(st: CommuteState): String? {
     val copied = st.rows.firstNotNullOfOrNull { it.copiedFrom }
     val live = st.liveAt
-    // A picked day or time: say which, before where the data comes from.
-    val planned = if (st.day == null && st.time == null) "" else "${day(st.at.toSwiss().toLocalDate())}, ${hm(st.at)} · "
-    return planned + when {
+    return when {
         st.offline && copied != null -> "Offline · timetable of ${day(copied)}, no delays or occupancy"
-        st.offline && live != null -> "Offline · last update ${ago(st.now - live)}"
-        st.offline -> "Offline · saved timetable"
-        live != null -> (if (planned.isEmpty()) "Live" else "Fetched") + (st.source?.let { " · $it" } ?: "") + " · updated ${ago(st.now - live)}" +
-            if (st.now - live > 10 * 60) " · pull down to refresh" else ""
+        st.offline -> "Offline · saved trips"
         copied != null -> "Saved timetable of ${day(copied)}"
-        else -> "Loading…"
+        live != null && st.now - live > 10 * 60 && st.day == null && st.time == null ->
+            "Updated ${ago(st.now - live)} · pull down to refresh"
+        else -> null
     }
 }
 
-@Composable
-private fun QuickestCard(row: TripRow, weather: WeatherAt?, cls: TravelClass, now: Long, live: Boolean, onClick: () -> Unit) {
-    val t = row.trip
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Timer, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                val minutes = (t.expectedDeparture() - now) / 60
-                Text(
-                    "Fastest arrival · " + when {
-                        !live -> "leave ${hm(t.expectedDeparture())}"
-                        minutes < 1 -> "leave now"
-                        else -> "leave in $minutes min"
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Spacer(Modifier.size(4.dp))
-            Text("Arrive ${hm(t.expectedArrival())}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Leave ${hm(t.expectedDeparture())}" + (t.platform?.let { " · Pl. $it" } ?: ""), style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.size(4.dp))
-            Trains(t, cls)
-            Mine(row)
-            Spacer(Modifier.size(8.dp))
-            if (weather != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(weather.sky.icon(), weather.sky.label())
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "${temp(weather.temp)} on arrival · ${weather.sky.label()}" + (weather.max?.let { " · max ${temp(it)}" } ?: ""),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                }
-            } else {
-                Text(
-                    if (live) "No current weather forecast" else "No weather forecast that far ahead",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-    }
+/** Green for the fastest trip shown, red for the slowest, yellow in between. */
+private fun durationColor(t: Trip, all: List<Long>): Color? {
+    if (all.size < 2 || t.cancelled) return null
+    val lo = all.min()
+    val hi = all.max()
+    if (hi == lo) return null
+    val f = ((t.expectedArrival() - t.expectedDeparture() - lo).toFloat() / (hi - lo)).coerceIn(0f, 1f)
+    val green = Color(0xFF43A047)
+    val yellow = Color(0xFFFBC02D)
+    val red = Color(0xFFE53935)
+    return if (f < 0.5f) lerp(green, yellow, f * 2) else lerp(yellow, red, (f - 0.5f) * 2)
 }
 
 @Composable
-private fun TripItem(row: TripRow, cls: TravelClass, now: Long, onClick: () -> Unit) {
+private fun TripItem(row: TripRow, cls: TravelClass, now: Long, durationColor: Color?, onClick: () -> Unit) {
     val t = row.trip
     // Shown for a few minutes after it left (in case it is late); dimmed once it should be gone.
     val gone = t.expectedDeparture() < now
@@ -296,7 +259,12 @@ private fun TripItem(row: TripRow, cls: TravelClass, now: Long, onClick: () -> U
         Row(verticalAlignment = Alignment.CenterVertically) {
             Times(t)
             Spacer(Modifier.weight(1f))
-            Text(duration(t.arrival - t.departure), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                duration(t.expectedArrival() - t.expectedDeparture()),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = durationColor ?: MaterialTheme.colorScheme.onSurface,
+            )
         }
         Spacer(Modifier.size(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

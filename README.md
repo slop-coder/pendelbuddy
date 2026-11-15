@@ -3,8 +3,11 @@
 An Android app for commuting by train in Switzerland. On a weekday it shows the next trains to work in the morning and
 home in the afternoon: leave time, arrival, changes, platform, delays and how full the train is expected to be.
 
-- **Fastest arrival**: the earliest arrival among the trains you can still catch (and how long until it leaves), with the temperature at the
-  destination on arrival, the day's maximum and the sky (sunny, cloudy, rain, snow…).
+- **Day and time**: tabs Mo–Su (the next such day) and a time picker with morning/evening shortcuts. The working
+  week's commute (to work 05:30–08:00, home 15:30–18:30) is fetched ahead, so those times need no request.
+- **Weather card**: the picked day at your destination, hour by hour, with rain or snow by intensity.
+- **Trip list**: train badges colored by expected occupancy (worst stretch of each ride), travel time from green
+  (fastest shown) to red (slowest).
 - **I'm at…**: pick the station you are at (home, a station in between such as a breakfast stop, work, or any other)
   to see the trips from there. Picking the destination plans the trip back.
 - **Fullness**: the occupancy forecast for your class (1st/2nd) where the timetable has one, plus your own ratings:

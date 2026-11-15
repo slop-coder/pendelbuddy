@@ -21,8 +21,8 @@ import io.github.slop_coder.pendelbuddy.core.SWISS
 import io.github.slop_coder.pendelbuddy.core.Settings
 import io.github.slop_coder.pendelbuddy.core.Station
 import io.github.slop_coder.pendelbuddy.core.Trip
-import io.github.slop_coder.pendelbuddy.core.WeatherAt
-import io.github.slop_coder.pendelbuddy.core.at
+import io.github.slop_coder.pendelbuddy.core.DayWeather
+import io.github.slop_coder.pendelbuddy.core.dayWeather
 import io.github.slop_coder.pendelbuddy.core.merge
 import io.github.slop_coder.pendelbuddy.core.project
 import io.github.slop_coder.pendelbuddy.core.toSwiss
@@ -65,8 +65,9 @@ data class CommuteState(
     /** Station picked at the bottom ("I'm already here"); null means start where the commute starts. */
     val current: Station? = null,
     val rows: List<TripRow> = emptyList(),
-    val quickest: TripRow? = null,
-    val weather: WeatherAt? = null,
+    /** The picked day's weather at the destination, and its name. */
+    val weather: DayWeather? = null,
+    val weatherPlace: String? = null,
     /** Last successful timetable download for the shown route, epoch seconds. */
     val liveAt: Long? = null,
     val offline: Boolean = false,
@@ -128,8 +129,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun openedApp() {
         fetchedThisVisit.clear()
         viewModelScope.launch {
-            // What is on screen first, then the commute in the background.
+            // What is on screen first, then the weather and the commute in the background.
             refresh()
+            updateWeather(force = true)
             val today = nowSec().toSwiss().toLocalDate()
             prefetch(Commute.weekDays(today), force = setOf(today, today.plusDays(1)))
         }
@@ -202,8 +204,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(day = d.takeIf { it != today }) }
         viewModelScope.launch {
             refresh()
-            // The picked day's commute is refreshed in the background; the page updates when it arrives.
-            prefetch(listOf(d), force = setOf(d))
+            updateWeather(force = false)
+            // The picked day's commute, unless already fetched today; right away, the page updates when it arrives.
+            prefetch(listOf(d), force = emptySet(), background = false)
         }
     }
 
@@ -237,7 +240,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pullToRefresh() {
-        viewModelScope.launch { refresh(force = true) }
+        viewModelScope.launch {
+            refresh(force = true)
+            updateWeather(force = true)
+        }
     }
 
     /** Saves a rating of [leg] together with the forecast it showed; earlier ratings are kept for analysis. */
@@ -336,6 +342,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val key = fetchKey(route)
         if (!force && key in fetchedThisVisit) return
         fetchedThisVisit += key
+        if (!force && !live && coveredByPrefetch(route, at, now)) return
         fetchLock.withLock {
             _state.update { it.copy(loading = true) }
             try {
@@ -348,50 +355,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Log.w(TAG, "Timetable download failed", e)
                 _state.update { it.copy(offline = true) }
             }
-            try {
-                updateForecast(route.to, now)
-            } catch (e: Exception) {
-                Log.w(TAG, "Weather download failed", e)
-            }
             _state.update { it.copy(loading = false) }
         }
         render()
     }
 
+    /** True if a commute window fetched today already holds the trips for [r] at [at]: no request needed. */
+    private suspend fun coveredByPrefetch(r: Route, at: Long, now: Long): Boolean {
+        val day = at.toSwiss().toLocalDate()
+        val windows = Commute.commuteWindows(_state.value.settings, listOf(day), now)
+        return windows.any { w -> w.route.from.id == r.from.id && w.route.to.id == r.to.id && at >= w.from && at <= w.until } &&
+            store.route(r.from.id, r.to.id).prefilledToday(day, now.toSwiss().toLocalDate())
+    }
+
     /**
-     * Fetches the commute windows (to work 05:30–08:00, home 15:30–18:30) of the working days among [days] in the
-     * background: days in [force] always, the others once a day. The page is updated after each window.
+     * Fetches the commute windows (to work 05:30–08:00, home 15:30–18:30) of the working days among [days]:
+     * days in [force] always, the others once a day. The page is updated after each window. In the [background]
+     * the windows queue up with pauses between requests; asked for from the screen, they go right away.
      */
-    private fun prefetch(days: List<LocalDate>, force: Set<LocalDate>) {
+    private fun prefetch(days: List<LocalDate>, force: Set<LocalDate>, background: Boolean = true) {
         viewModelScope.launch {
-            prefetchLock.withLock {
-                val now = nowSec()
-                val today = now.toSwiss().toLocalDate()
-                for (w in Commute.commuteWindows(_state.value.settings, days, now)) {
-                    val r = w.route
-                    if (w.day !in force && store.route(r.from.id, r.to.id).prefilledToday(w.day, today)) continue
-                    _state.update { it.copy(updating = it.updating + w.day) }
-                    try {
-                        val trips = fetchWindow(w)
-                        store.saveRoute(store.route(r.from.id, r.to.id).merge(trips, now).markPrefilled(w.day, today))
-                        render()
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // Offline or the API refuses: try again on the next opening.
-                        Log.w(TAG, "Prefetch failed", e)
-                        break
-                    } finally {
-                        _state.update { it.copy(updating = it.updating - w.day) }
-                    }
-                    delay(PREFETCH_PAUSE)
-                }
+            if (background) prefetchLock.withLock { prefetchNow(days, force, PREFETCH_PAUSE) }
+            else prefetchNow(days, force, 0)
+        }
+    }
+
+    private suspend fun prefetchNow(days: List<LocalDate>, force: Set<LocalDate>, pause: Long) {
+        val now = nowSec()
+        val today = now.toSwiss().toLocalDate()
+        for (w in Commute.commuteWindows(_state.value.settings, days, now)) {
+            val r = w.route
+            if (w.day !in force && store.route(r.from.id, r.to.id).prefilledToday(w.day, today)) continue
+            _state.update { it.copy(updating = it.updating + w.day) }
+            try {
+                val trips = fetchWindow(w, pause)
+                store.saveRoute(store.route(r.from.id, r.to.id).merge(trips, now).markPrefilled(w.day, today))
+                render()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Offline or the API refuses: try again on the next opening.
+                Log.w(TAG, "Prefetch failed", e)
+                break
+            } finally {
+                _state.update { it.copy(updating = it.updating - w.day) }
             }
+            delay(pause)
         }
     }
 
     /** All departures of one window, page by page (up to 4 pages of 16). */
-    private suspend fun fetchWindow(w: Commute.Window): List<Trip> {
+    private suspend fun fetchWindow(w: Commute.Window, pause: Long): List<Trip> {
         val all = mutableListOf<Trip>()
         var at = w.from
         repeat(4) {
@@ -400,7 +414,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val last = page.maxOfOrNull { it.departure } ?: return all
             if (last >= w.until || last < at) return all
             at = last + 60
-            delay(PREFETCH_PAUSE)
+            delay(pause)
         }
         return all
     }
@@ -446,13 +460,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun updateForecast(to: Station, now: Long) {
-        val lat = to.lat ?: return
-        val lon = to.lon ?: return
-        val old = forecasts[to.id]
-        if (old != null && now - old.fetchedAt < 3600) return
-        forecasts = forecasts + (to.id to WeatherClient.forecast(lat, lon, now))
-        store.saveForecasts(forecasts)
+    /**
+     * Weather for home and work (one request each covers 5 days), on the same schedule as the trips: on opening
+     * and pull-to-refresh ([force]), otherwise once a day.
+     */
+    private suspend fun updateWeather(force: Boolean) {
+        val s = _state.value.settings
+        val now = nowSec()
+        val today = now.toSwiss().toLocalDate()
+        for (place in listOfNotNull(s.home, s.work)) {
+            val lat = place.lat ?: continue
+            val lon = place.lon ?: continue
+            val old = forecasts[place.id]
+            if (!force && old != null && old.fetchedAt.toSwiss().toLocalDate() == today) continue
+            try {
+                forecasts = forecasts + (place.id to WeatherClient.forecast(lat, lon, now))
+                store.saveForecasts(forecasts)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Weather download failed", e)
+                break
+            }
+        }
+        render()
     }
 
     private suspend fun render() {
@@ -461,7 +492,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val at = queryTime()
         val route = currentRoute()
         if (route == null) {
-            _state.update { it.copy(route = null, rows = emptyList(), quickest = null, weather = null, now = now, at = at) }
+            _state.update { it.copy(route = null, rows = emptyList(), weather = null, now = now, at = at) }
             return
         }
         val cls = st.settings.travelClass
@@ -471,16 +502,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .filter { Commute.allowed(it.trip, st.settings, buffer) }
             .upcoming(at, count = 8, now = now)
             .map { TripRow(it.trip, it.copiedFrom, Ratings.forTrip(ratings, it.trip, cls)) }
-        val quickest = Commute.quickest(rows.map { it.trip }, maxOf(at, now))?.let { q -> rows.first { it.trip == q } }
         val weather = forecasts[route.to.id]
-            ?.takeIf { now - it.fetchedAt <= Freshness.WEATHER }
-            ?.at(quickest?.trip?.expectedArrival() ?: at)
+            ?.takeIf { now - it.fetchedAt <= Freshness.WEATHER_MAX }
+            ?.dayWeather(at.toSwiss().toLocalDate())
         _state.update {
             it.copy(
                 route = route,
                 rows = rows,
-                quickest = quickest,
                 weather = weather,
+                weatherPlace = route.to.name,
                 liveAt = lastFetch[fetchKey(route)],
                 now = now,
                 at = at,

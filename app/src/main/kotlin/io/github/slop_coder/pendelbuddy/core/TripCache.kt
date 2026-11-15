@@ -14,8 +14,11 @@ object Freshness {
     /** Occupancy forecasts are made per day; only shown for the day they were fetched for. */
     const val OCCUPANCY = 12 * 3600L
 
-    /** Forecasts older than this are hidden instead of shown as current. */
+    /** Forecasts older than this get a note saying when they are from. */
     const val WEATHER = 3 * 3600L
+
+    /** Forecasts older than this are not shown at all. */
+    const val WEATHER_MAX = 24 * 3600L
 
     /** Older timetable data is dropped; it is refreshed every time the app is online anyway. */
     const val TIMETABLE_DAYS = 35L

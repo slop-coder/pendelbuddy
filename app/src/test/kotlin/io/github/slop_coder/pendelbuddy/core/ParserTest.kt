@@ -48,11 +48,8 @@ class ParserTest {
         val f = WeatherParser.parse(fixture("weather.json"), fetchedAt = 0)
         // The 09:00 hour has no temperature and is skipped.
         assertEquals(2, f.hours.size)
-        val at = f.at(java.time.LocalDateTime.of(2026, 11, 16, 7, 30).atZone(SWISS).toEpochSecond())!!
-        assertEquals(3.0, at.temp, 1e-9)
-        assertEquals(11.3, at.max!!, 1e-9)
-        assertEquals(Sky.RAIN, at.sky)
-        assertNull(f.at(java.time.LocalDateTime.of(2026, 11, 16, 12, 0).atZone(SWISS).toEpochSecond()))
+        assertEquals(listOf(2.0, 4.0), f.hours.map { it.temp })
+        assertEquals(11.3, f.day(java.time.LocalDate.of(2026, 11, 16))!!.max, 1e-9)
         assertEquals(Sky.SUNNY, Sky.ofWmo(0))
         assertEquals(Sky.SNOW, Sky.ofWmo(73))
         assertEquals(Sky.THUNDER, Sky.ofWmo(95))

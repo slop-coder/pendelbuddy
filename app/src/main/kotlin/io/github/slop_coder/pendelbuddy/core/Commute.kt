@@ -156,11 +156,6 @@ object Commute {
     /** The trips allowed by the settings: no more than the maximum changes, and the margin kept. */
     fun allowed(t: Trip, s: Settings, buffer: Buffer?) =
         (s.maxChanges == null || t.transfers <= s.maxChanges) && (buffer == null || !breaksBuffer(t, buffer))
-
-    /** Earliest arrival among the trips still to be caught at [now]; on a tie, the one leaving later. */
-    fun quickest(trips: List<Trip>, now: Long) =
-        trips.filter { !it.cancelled && it.expectedDeparture() >= now }
-            .minWithOrNull(compareBy<Trip> { it.expectedArrival() }.thenByDescending { it.expectedDeparture() })
 }
 
 /**
