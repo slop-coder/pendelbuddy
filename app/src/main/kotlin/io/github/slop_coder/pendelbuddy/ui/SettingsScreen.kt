@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Timer
@@ -77,13 +79,18 @@ import java.time.LocalDate
 
 private enum class Pick { HOME, WORK, VIA }
 
+private enum class TimeSetting { SWITCH, MORNING, EVENING }
+
+private fun clock(minute: Int) = "%02d:%02d".format(minute / 60, minute % 60)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) {
     val initial = status.settings
     var s by remember { mutableStateOf(initial) }
     var picking by remember { mutableStateOf<Pick?>(null) }
-    var timeDialog by remember { mutableStateOf(false) }
+    /** Which time is being picked: the switch to trips home, or the morning / evening button. */
+    var timeDialog by remember { mutableStateOf<TimeSetting?>(null) }
     var keyDialog by remember { mutableStateOf(false) }
     var bufferDialog by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Station?>(null) }
@@ -168,7 +175,18 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
                 headlineContent = { Text("Trips home from") },
                 supportingContent = { Text("%02d:%02d · before that, trips go to work".format(s.switchMinute / 60, s.switchMinute % 60)) },
                 leadingContent = { Icon(Icons.Filled.Schedule, null) },
-                trailingContent = { TextButton(onClick = { timeDialog = true }) { Text("Change") } },
+                trailingContent = { TextButton(onClick = { timeDialog = TimeSetting.SWITCH }) { Text("Change") } },
+            )
+            ListItem(
+                headlineContent = { Text("Morning and evening buttons") },
+                supportingContent = { Text("Jump to ${clock(s.morningMinute)} and ${clock(s.eveningMinute)}") },
+                leadingContent = { Icon(Icons.Filled.WbTwilight, null) },
+                trailingContent = {
+                    Row {
+                        IconButton(onClick = { timeDialog = TimeSetting.MORNING }) { Icon(Icons.Filled.WbTwilight, "Change morning time") }
+                        IconButton(onClick = { timeDialog = TimeSetting.EVENING }) { Icon(Icons.Filled.NightsStay, "Change evening time") }
+                    }
+                },
             )
 
             Header("Safety margins")
@@ -278,16 +296,31 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
         )
     }
     if (keyDialog) KeyDialog(onSave = { vm.setOjpKey(it); keyDialog = false }, onDismiss = { keyDialog = false })
-    if (timeDialog) {
-        val state = rememberTimePickerState(s.switchMinute / 60, s.switchMinute % 60, is24Hour = true)
+    timeDialog?.let { which ->
+        val current = when (which) {
+            TimeSetting.SWITCH -> s.switchMinute
+            TimeSetting.MORNING -> s.morningMinute
+            TimeSetting.EVENING -> s.eveningMinute
+        }
+        val state = rememberTimePickerState(current / 60, current % 60, is24Hour = true)
         AlertDialog(
-            onDismissRequest = { timeDialog = false },
-            title = { Text("Trips home from") },
+            onDismissRequest = { timeDialog = null },
+            title = {
+                Text(when (which) { TimeSetting.SWITCH -> "Trips home from"; TimeSetting.MORNING -> "Morning button"; TimeSetting.EVENING -> "Evening button" })
+            },
             text = { TimePicker(state) },
             confirmButton = {
-                TextButton(onClick = { s = s.copy(switchMinute = state.hour * 60 + state.minute); timeDialog = false }) { Text("OK") }
+                TextButton(onClick = {
+                    val m = state.hour * 60 + state.minute
+                    s = when (which) {
+                        TimeSetting.SWITCH -> s.copy(switchMinute = m)
+                        TimeSetting.MORNING -> s.copy(morningMinute = m)
+                        TimeSetting.EVENING -> s.copy(eveningMinute = m)
+                    }
+                    timeDialog = null
+                }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { timeDialog = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { timeDialog = null }) { Text("Cancel") } },
         )
     }
 }

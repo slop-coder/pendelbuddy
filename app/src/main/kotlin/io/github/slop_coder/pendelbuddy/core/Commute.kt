@@ -3,6 +3,7 @@ package io.github.slop_coder.pendelbuddy.core
 import kotlinx.serialization.Serializable
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZonedDateTime
 import kotlin.math.asin
 import kotlin.math.cos
@@ -39,6 +40,32 @@ object Commute {
         val from = current ?: origin(s, direction) ?: return null
         if (from.id == to.id) return null
         return Route(from, to, direction)
+    }
+
+    /** Departures fetched ahead for every working day: to work 05:30–08:00, home 15:30–18:30. */
+    val MORNING_WINDOW = LocalTime.of(5, 30)..LocalTime.of(8, 0)
+    val EVENING_WINDOW = LocalTime.of(15, 30)..LocalTime.of(18, 30)
+
+    /** One commute window to fetch: the route, its day and the departure span (epoch seconds). */
+    data class Window(val route: Route, val day: LocalDate, val from: Long, val until: Long)
+
+    /**
+     * The commute windows of the working days among [days], in date order. Today's start no earlier than
+     * [LOOK_BACK] before [now]; windows that are over are left out.
+     */
+    fun commuteWindows(s: Settings, days: List<LocalDate>, now: Long): List<Window> {
+        val home = s.home ?: return emptyList()
+        val work = s.work ?: return emptyList()
+        return days.sorted().filter { DayType.of(it) == DayType.WEEKDAY }.flatMap { day ->
+            listOf(
+                Route(home, work, Direction.TO_WORK) to MORNING_WINDOW,
+                Route(work, home, Direction.TO_HOME) to EVENING_WINDOW,
+            ).mapNotNull { (route, span) ->
+                val from = maxOf(day.atTime(span.start).atZone(SWISS).toEpochSecond(), now - LOOK_BACK)
+                val until = day.atTime(span.endInclusive).atZone(SWISS).toEpochSecond()
+                if (until < from) null else Window(route, day, from, until)
+            }
+        }
     }
 
     /** The dates behind the Mo–Su tabs: each the next such day from [today] on (on a Wednesday, Mo is next week's). */

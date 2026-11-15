@@ -38,6 +38,9 @@ data class Settings(
     val maxChanges: Int? = null,
     /** Extra time to keep when changing at certain stations (a late bus, breakfast). */
     val buffers: List<Buffer> = emptyList(),
+    /** Times the morning and evening buttons at the top jump to, minutes after midnight. */
+    val morningMinute: Int = 6 * 60,
+    val eveningMinute: Int = 16 * 60,
 ) {
     val complete get() = home != null && work != null && home.id != work.id
 

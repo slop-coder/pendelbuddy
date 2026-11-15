@@ -77,6 +77,8 @@ data class CommuteState(
     /** Where the last timetable came from, or what went wrong with OJP. */
     val source: String? = null,
     val ojpProblem: String? = null,
+    /** Days whose commute is being fetched in the background right now. */
+    val updating: Set<LocalDate> = emptySet(),
     /** The day and time picked at the top; null = today / now. */
     val day: LocalDate? = null,
     val time: LocalTime? = null,
@@ -104,6 +106,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val fetchedThisVisit = mutableSetOf<String>()
     private val lastFetch = mutableMapOf<String, Long>()
     private val fetchLock = Mutex()
+    /** Background prefetches run one after another, so they never compete with what you tapped. */
+    private val prefetchLock = Mutex()
     private var ticker: Job? = null
     private var searchJob: Job? = null
 
@@ -116,7 +120,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val keySet = withContext(Dispatchers.IO) { secrets.hasOjpKey() }
             _state.update { it.copy(settings = store.settings(), loaded = true, ojpKeySet = keySet) }
             updateRatingStats()
+            openedApp()
+        }
+    }
+
+    /** On opening: the trips shown, today's and tomorrow's commute, and once a day the rest of the working week. */
+    private fun openedApp() {
+        fetchedThisVisit.clear()
+        viewModelScope.launch {
+            // What is on screen first, then the commute in the background.
             refresh()
+            val today = nowSec().toSwiss().toLocalDate()
+            prefetch(Commute.weekDays(today), force = setOf(today, today.plusDays(1)))
         }
     }
 
@@ -125,10 +140,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * off the list, old delays are hidden). No more downloads until reopening or pull-to-refresh.
      */
     fun start() {
-        if (_state.value.loaded) {
-            fetchedThisVisit.clear()
-            viewModelScope.launch { refresh() }
-        }
+        if (_state.value.loaded) openedApp()
         if (ticker?.isActive == true) return
         ticker = viewModelScope.launch {
             while (isActive) {
@@ -149,6 +161,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             store.saveSettings(s)
             fetchedThisVisit.clear()
             refresh()
+            prefetch(Commute.weekDays(nowSec().toSwiss().toLocalDate()), force = emptySet())
         }
     }
 
@@ -187,7 +200,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun selectDay(d: LocalDate) {
         val today = nowSec().toSwiss().toLocalDate()
         _state.update { it.copy(day = d.takeIf { it != today }) }
-        viewModelScope.launch { refresh() }
+        viewModelScope.launch {
+            refresh()
+            // The picked day's commute is refreshed in the background; the page updates when it arrives.
+            prefetch(listOf(d), force = setOf(d))
+        }
     }
 
     /** Picks the time at the top; null = now. */
@@ -327,7 +344,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 lastFetch[key] = now
 
                 _state.update { it.copy(offline = false) }
-                prefillCommute(now)
             } catch (e: Exception) {
                 Log.w(TAG, "Timetable download failed", e)
                 _state.update { it.copy(offline = true) }
@@ -342,21 +358,51 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         render()
     }
 
-    /** Once a day, fetch the whole morning and afternoon commute so it is there when offline. */
-    private suspend fun prefillCommute(now: Long) {
-        val s = _state.value.settings
-        val home = s.home ?: return
-        val work = s.work ?: return
-        val today = now.toSwiss().toLocalDate()
-        val morning = today.atTime(LocalTime.of(5, 30)).atZone(SWISS).toEpochSecond()
-        val afternoon = today.atTime(LocalTime.of(s.switchMinute / 60, s.switchMinute % 60)).atZone(SWISS).toEpochSecond()
-        val commutes = listOf(Route(home, work, Direction.TO_WORK) to morning, Route(work, home, Direction.TO_HOME) to afternoon)
-        for ((route, at) in commutes) {
-            val cache = store.route(route.from.id, route.to.id)
-            if (cache.prefilledOn == today.toString()) continue
-            val trips = plan(route, at, limit = 16)
-            store.saveRoute(cache.merge(trips, now).copy(prefilledOn = today.toString()))
+    /**
+     * Fetches the commute windows (to work 05:30–08:00, home 15:30–18:30) of the working days among [days] in the
+     * background: days in [force] always, the others once a day. The page is updated after each window.
+     */
+    private fun prefetch(days: List<LocalDate>, force: Set<LocalDate>) {
+        viewModelScope.launch {
+            prefetchLock.withLock {
+                val now = nowSec()
+                val today = now.toSwiss().toLocalDate()
+                for (w in Commute.commuteWindows(_state.value.settings, days, now)) {
+                    val r = w.route
+                    if (w.day !in force && store.route(r.from.id, r.to.id).prefilledToday(w.day, today)) continue
+                    _state.update { it.copy(updating = it.updating + w.day) }
+                    try {
+                        val trips = fetchWindow(w)
+                        store.saveRoute(store.route(r.from.id, r.to.id).merge(trips, now).markPrefilled(w.day, today))
+                        render()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Offline or the API refuses: try again on the next opening.
+                        Log.w(TAG, "Prefetch failed", e)
+                        break
+                    } finally {
+                        _state.update { it.copy(updating = it.updating - w.day) }
+                    }
+                    delay(PREFETCH_PAUSE)
+                }
+            }
         }
+    }
+
+    /** All departures of one window, page by page (up to 4 pages of 16). */
+    private suspend fun fetchWindow(w: Commute.Window): List<Trip> {
+        val all = mutableListOf<Trip>()
+        var at = w.from
+        repeat(4) {
+            val page = fetchLock.withLock { plan(w.route, at, limit = 16) }
+            all += page
+            val last = page.maxOfOrNull { it.departure } ?: return all
+            if (last >= w.until || last < at) return all
+            at = last + 60
+            delay(PREFETCH_PAUSE)
+        }
+        return all
     }
 
     /**
@@ -444,5 +490,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val TAG = "PendelBuddy"
+        /** Between background requests: OJP's free tier allows 50 requests a minute. */
+        private const val PREFETCH_PAUSE = 1_500L
     }
 }

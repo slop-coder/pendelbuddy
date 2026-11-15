@@ -30,9 +30,15 @@ data class RouteCache(
     val fromId: String,
     val toId: String,
     val trips: List<CachedTrip> = emptyList(),
-    /** Date of the last whole-day prefetch. */
-    val prefilledOn: String? = null,
-)
+    /** Commute window prefetches: service day → the day it was fetched on (each day is refreshed once a day). */
+    val prefilled: Map<String, String> = emptyMap(),
+) {
+    fun prefilledToday(day: LocalDate, today: LocalDate) = prefilled[day.toString()] == today.toString()
+
+    /** Notes that [day] was fetched [today], forgetting days that have passed. */
+    fun markPrefilled(day: LocalDate, today: LocalDate) =
+        copy(prefilled = prefilled.filterKeys { !LocalDate.parse(it).isBefore(today) } + (day.toString() to today.toString()))
+}
 
 /** A trip ready to show, with where it came from. */
 data class ShownTrip(

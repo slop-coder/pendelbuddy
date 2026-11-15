@@ -22,7 +22,9 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapVert
@@ -38,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -86,6 +89,13 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
                 TopAppBar(
                     title = { Text("Pendel Buddy") },
                     actions = {
+                        val set = st.settings
+                        IconButton(onClick = { vm.selectTime(LocalTime.of(set.morningMinute / 60, set.morningMinute % 60)) }) {
+                            Icon(Icons.Filled.WbTwilight, "Morning")
+                        }
+                        IconButton(onClick = { vm.selectTime(LocalTime.of(set.eveningMinute / 60, set.eveningMinute % 60)) }) {
+                            Icon(Icons.Filled.NightsStay, "Evening")
+                        }
                         AssistChip(
                             onClick = { pickingTime = true },
                             label = { Text(st.time?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "Now") },
@@ -95,6 +105,10 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onSettings: () -> Unit, o
                     },
                 )
                 DayTabs(st, vm::selectDay)
+                // The shown day's commute is being fetched in the background.
+                if ((st.day ?: st.now.toSwiss().toLocalDate()) in st.updating) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
             }
         },
         bottomBar = {
