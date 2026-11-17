@@ -18,7 +18,15 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.zip.GZIPInputStream
 
-class HttpException(val code: Int, url: String) : IOException("HTTP $code for $url")
+/** [reason]: the server's own short error text, e.g. "Access to this API has been disallowed" (never request headers). */
+class HttpException(val code: Int, url: String, val reason: String? = null) : IOException("HTTP $code for $url")
+
+/** The "error" or "message" of a JSON error answer, or its first line; short. */
+private fun HttpURLConnection.reason(): String? = runCatching {
+    val body = errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText().take(2000) } ?: return null
+    (Regex(""""(?:error|message)"\s*:\s*"([^"]*)"""").find(body)?.groupValues?.get(1) ?: body.lineSequence().firstOrNull())
+        ?.trim()?.take(100)?.takeIf { it.isNotEmpty() }
+}.getOrNull()
 
 /** Plain HTTP GETs, identified as this app so the API operators can see who is calling. */
 object Http {
@@ -27,7 +35,7 @@ object Http {
     suspend fun text(url: String): String = withContext(Dispatchers.IO) {
         val c = open(url)
         try {
-            if (c.responseCode !in 200..299) throw HttpException(c.responseCode, url)
+            if (c.responseCode !in 200..299) throw HttpException(c.responseCode, url, c.reason())
             c.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
         } finally {
             c.disconnect()
@@ -45,7 +53,7 @@ object Http {
             // OJP answers carry ~1.4 MB of network-wide disruption notices; gzipped that is ~25 kB.
             c.setRequestProperty("Accept-Encoding", "gzip")
             c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            if (c.responseCode !in 200..299) throw HttpException(c.responseCode, url)
+            if (c.responseCode !in 200..299) throw HttpException(c.responseCode, url, c.reason())
             val gzip = c.contentEncoding.equals("gzip", ignoreCase = true)
             if (BuildConfig.DEBUG) Log.d("PendelBuddy", "OJP answer: gzip=$gzip, ${c.contentLength} bytes")
             (if (gzip) GZIPInputStream(c.inputStream) else c.inputStream).bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -61,7 +69,7 @@ object Http {
             c.setRequestProperty("Authorization", "Bearer $bearer")
             c.setRequestProperty("Accept", "application/json")
             c.setRequestProperty("Accept-Encoding", "gzip")
-            if (c.responseCode !in 200..299) throw HttpException(c.responseCode, url)
+            if (c.responseCode !in 200..299) throw HttpException(c.responseCode, url, c.reason())
             val gzip = c.contentEncoding.equals("gzip", ignoreCase = true)
             (if (gzip) GZIPInputStream(c.inputStream) else c.inputStream).bufferedReader(Charsets.UTF_8).use { it.readText() }
         } finally {

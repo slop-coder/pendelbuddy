@@ -86,7 +86,7 @@ class Backend private constructor(context: Context) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: HttpException) {
-            addLog(entry("HTTP ${e.code}"))
+            addLog(entry("HTTP ${e.code}" + (e.reason?.let { ": $it" } ?: "")))
             throw e
         } catch (e: Exception) {
             addLog(entry(e.javaClass.simpleName + (e.message?.let { ": ${it.take(80)}" } ?: "")))
