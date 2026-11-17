@@ -1,5 +1,13 @@
 package io.github.slop_coder.pendelbuddy.ui
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.Modifier
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.Composable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Cable
@@ -74,3 +82,16 @@ fun capacityLabel(level: Int) = when (level) {
     2 -> "Medium occupancy"
     else -> "High occupancy"
 }
+
+/**
+ * A thick line across (cancelled, delayed or moved), easier to see than the font's own strike-through. [color]
+ * defaults to the text color around it.
+ */
+@Composable
+fun Modifier.struck(on: Boolean = true, color: Color = LocalContentColor.current): Modifier =
+    if (!on) this else drawWithContent {
+        drawContent()
+        val y = size.height / 2
+        val inset = 1.dp.toPx()
+        drawLine(color, Offset(inset, y), Offset(size.width - inset, y), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+    }

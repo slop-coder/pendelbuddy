@@ -1,9 +1,6 @@
 package io.github.slop_coder.pendelbuddy.ui
 
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -71,7 +68,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
@@ -304,13 +300,13 @@ private fun Times(t: Trip) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         val dep = t.departureDelay ?: 0
         if (t.cancelled) {
-            Text(hm(t.departure), style = MaterialTheme.typography.titleLarge, textDecoration = TextDecoration.LineThrough)
+            Text(hm(t.departure), Modifier.struck(), style = MaterialTheme.typography.titleLarge)
             Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.padding(horizontal = 8.dp).size(18.dp))
-            Text(hm(t.arrival), style = MaterialTheme.typography.titleLarge, textDecoration = TextDecoration.LineThrough)
+            Text(hm(t.arrival), Modifier.struck(), style = MaterialTheme.typography.titleLarge)
             return@Row
         }
         if (dep > 0) {
-            Text(hm(t.departure), style = MaterialTheme.typography.bodyMedium, textDecoration = TextDecoration.LineThrough)
+            Text(hm(t.departure), Modifier.struck(), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.width(4.dp))
             Text(hm(t.expectedDeparture()), style = MaterialTheme.typography.titleLarge, color = late, fontWeight = FontWeight.Bold)
         } else {
@@ -341,7 +337,7 @@ fun Platform(platform: String?, planned: String?) {
     platform ?: return
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (planned != null && planned != platform) {
-            Text("Pl. $planned", style = MaterialTheme.typography.bodyMedium, textDecoration = TextDecoration.LineThrough)
+            Text("Pl. $planned", Modifier.struck(), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.width(4.dp))
             Text(platform, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
         } else {
@@ -360,15 +356,7 @@ fun LineBadge(leg: Leg, cls: TravelClass) {
     val (_, fg) = occupancyColors(spans.firstOrNull()?.first)
     val colors = spans.map { occupancyColors(it.first).first to it.second.toFloat() }
     Surface(color = Color.Transparent, contentColor = fg, shape = RoundedCornerShape(6.dp)) {
-        // Cancelled: a thick line across, easier to see than the font's own strike-through.
-        val strike = Modifier.drawWithContent {
-            drawContent()
-            if (leg.cancelled) {
-                val y = size.height / 2
-                drawLine(fg, Offset(3.dp.toPx(), y), Offset(size.width - 3.dp.toPx(), y), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
-            }
-        }
-        Box(Modifier.height(IntrinsicSize.Min).width(IntrinsicSize.Max).then(strike)) {
+        Box(Modifier.height(IntrinsicSize.Min).width(IntrinsicSize.Max).struck(leg.cancelled, fg)) {
             Row(Modifier.matchParentSize()) {
                 for ((c, w) in colors) Box(Modifier.weight(w).fillMaxHeight().background(c))
             }

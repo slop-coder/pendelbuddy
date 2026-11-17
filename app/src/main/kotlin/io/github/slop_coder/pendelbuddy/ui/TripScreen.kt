@@ -58,7 +58,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import io.github.slop_coder.pendelbuddy.core.Call
 import io.github.slop_coder.pendelbuddy.core.Change
@@ -288,8 +287,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
 private fun Stop(time: Long, delay: Int?, station: String, platform: String?, planned: String?) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         val late = (delay ?: 0) > 0
-        Text(hm(time), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-            textDecoration = if (late) TextDecoration.LineThrough else null)
+        Text(hm(time), Modifier.struck(late), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         if (late) {
             Spacer(Modifier.width(4.dp))
             Text(hm(time + 60L * delay!!), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
