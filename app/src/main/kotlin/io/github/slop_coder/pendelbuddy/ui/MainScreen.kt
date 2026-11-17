@@ -55,14 +55,6 @@ fun MainScreen(vm: MainViewModel) {
     }
     // Until home and work are set there is nothing else to show.
     val current = if (st.settings.complete) tab else Tab.SETTINGS
-    if (current == Tab.TRIPS && trip != null) {
-        TripScreen(vm, st, trip!!, onBack = { trip = null })
-        return
-    }
-    if (current == Tab.SETTINGS && requestLog) {
-        DebugScreen(vm, st, onBack = { requestLog = false })
-        return
-    }
     BackHandler(enabled = current != Tab.TRIPS && st.settings.complete) { tab = Tab.TRIPS }
     Scaffold(
         bottomBar = {
@@ -70,7 +62,8 @@ fun MainScreen(vm: MainViewModel) {
                 for (t in Tab.entries) {
                     NavigationBarItem(
                         selected = current == t,
-                        onClick = { tab = t },
+                        // Tapping the tab you are on goes back to its start (closes the trip or the request log).
+                        onClick = { if (t == current) { trip = null; requestLog = false }; tab = t },
                         icon = { Icon(t.icon, null) },
                         label = { Text(t.label) },
                         enabled = st.settings.complete || t == Tab.SETTINGS,
@@ -81,10 +74,12 @@ fun MainScreen(vm: MainViewModel) {
     ) { pad ->
         Box(Modifier.padding(pad).consumeWindowInsets(pad)) {
             when (current) {
-                Tab.TRIPS -> CommuteScreen(vm, st, onTrip = { trip = it }, onMyTrip = { tab = Tab.MY_TRIP })
+                Tab.TRIPS -> trip?.let { TripScreen(vm, st, it, onBack = { trip = null }) }
+                    ?: CommuteScreen(vm, st, onTrip = { trip = it }, onMyTrip = { tab = Tab.MY_TRIP })
                 Tab.MY_TRIP -> MyTripScreen(vm, st)
                 Tab.RATINGS -> RatingsScreen(vm, st)
-                Tab.SETTINGS -> SettingsScreen(vm, st, onDone = { tab = Tab.TRIPS }, onRequestLog = { requestLog = true })
+                Tab.SETTINGS -> if (requestLog) DebugScreen(vm, st, onBack = { requestLog = false })
+                    else SettingsScreen(vm, st, onDone = { tab = Tab.TRIPS }, onRequestLog = { requestLog = true })
             }
         }
     }

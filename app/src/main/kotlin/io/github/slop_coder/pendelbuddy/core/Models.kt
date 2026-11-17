@@ -119,6 +119,14 @@ data class Leg(
 ) {
     val walk get() = line == null
 
+    /** Why you cannot ride this train as planned, or null. */
+    val problem get() = when {
+        !cancelled -> null
+        boardSkipped -> "$line does not stop at $fromName"
+        alightSkipped -> "$line does not stop at $toName"
+        else -> "$line is cancelled"
+    }
+
     /** The ride split where the occupancy in [cls] changes, e.g. "A → B: low", "B → C: high". */
     fun sections(cls: TravelClass): List<Section> {
         val out = mutableListOf<Section>()

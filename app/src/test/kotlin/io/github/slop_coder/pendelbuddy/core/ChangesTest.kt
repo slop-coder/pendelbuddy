@@ -74,6 +74,14 @@ class ChangesTest {
     }
 
     @Test
+    fun problemInWords() {
+        assertEquals(null, ic().problem)
+        assertEquals("IC 8 is cancelled", ic(cancelled = true).problem)
+        assertEquals("IC 8 does not stop at Talwil", ic(boardSkipped = true).problem)
+        assertEquals("IC 8 does not stop at Musterdorf", ic(alightSkipped = true).problem)
+    }
+
+    @Test
     fun skippedStopsInBetweenDoNotCount() {
         // The answer marks a stop in between as not served; only boarding and exit stops are kept as flags.
         assertEquals(emptyList<String>(), keys(mine(ic(), change, s3())))

@@ -58,6 +58,8 @@ data class TripRow(
     val mine: Average?,
     /** Earlier departures of the first ride's line from the same stop that day (latest first), for extra time. */
     val earlier: List<Long> = emptyList(),
+    /** When this trip was downloaded, epoch seconds; 0 = unknown. */
+    val fetchedAt: Long = 0,
 )
 
 data class CommuteState(
@@ -568,7 +570,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             store.route(route.from.id, b.station.id).project(at.toSwiss().toLocalDate()).map { it.trip }
         } ?: emptyList())
         val rows = day.upcoming(at, count = 8, now = now)
-            .map { TripRow(it.trip, it.copiedFrom, Ratings.forTrip(ratings, it.trip, cls), Commute.earlierDepartures(it.trip, known)) }
+            .map { TripRow(it.trip, it.copiedFrom, Ratings.forTrip(ratings, it.trip, cls), Commute.earlierDepartures(it.trip, known), it.fetchedAt) }
         // Where you start and where you go: home and work, in the order of the trip.
         val places = listOfNotNull(Commute.origin(st.settings, route.direction), Commute.destination(st.settings, route.direction))
         val weather = places.mapNotNull { p ->

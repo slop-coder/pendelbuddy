@@ -13,9 +13,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.Group
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -53,6 +56,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import io.github.slop_coder.pendelbuddy.core.Change
+import io.github.slop_coder.pendelbuddy.core.Freshness
 import io.github.slop_coder.pendelbuddy.core.Leg
 import io.github.slop_coder.pendelbuddy.core.Ratings
 import io.github.slop_coder.pendelbuddy.core.SWISS
@@ -64,47 +69,97 @@ import kotlin.math.roundToInt
 
 /**
  * Everything about one trip, train by train, each with a bar to rate how full it is. The trip is looked up in the
- * list on every update, so delays and platforms stay current while it is open.
+ * list on every update, so delays and platforms stay current while it is open; your trip shows its own, fresher copy.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripScreen(vm: MainViewModel, st: CommuteState, row: TripRow, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     val live = st.rows.firstOrNull { it.trip.key == row.trip.key && it.trip.serviceDate == row.trip.serviceDate } ?: row
-    val t = live.trip
-    // Alerts need the notification permission (Android 13+); the trip is taken either way.
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.takeTrip(live) }
-    fun take() {
-        if (Build.VERSION.SDK_INT >= 33) ask.launch(Manifest.permission.POST_NOTIFICATIONS) else vm.takeTrip(live)
-    }
+    val mine = st.myTrip?.takeIf { st.isMyTrip(live.trip) }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { TripTitle(t) },
+                title = { TripTitle(live.trip) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
             )
         },
+        contentWindowInsets = WindowInsets(0),
     ) { pad ->
-        Column(
-            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        PullToRefreshBox(
+            isRefreshing = if (mine != null) st.myTripLoading else st.loading,
+            onRefresh = if (mine != null) vm::pullToRefreshMyTrip else vm::pullToRefresh,
+            modifier = Modifier.padding(pad).fillMaxSize(),
         ) {
-            TripSummary(t)
-            if (st.isMyTrip(t)) {
-                OutlinedButton(onClick = vm::dropTrip, modifier = Modifier.padding(horizontal = 4.dp)) {
-                    Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Your trip · stop watching")
-                }
-            } else {
-                FilledTonalButton(onClick = ::take, modifier = Modifier.padding(horizontal = 4.dp)) {
-                    Icon(Icons.Filled.ConfirmationNumber, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (st.myTrip == null) "I take this" else "I take this instead")
-                }
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (mine != null) TripBody(vm, st, live.copy(trip = mine.trip), mine.fetchedAt, st.changes, missing = !mine.found)
+                else TripBody(vm, st, live, live.fetchedAt, emptyList(), missing = false)
             }
-            TripDetails(vm, live, st.settings.travelClass)
+        }
+    }
+}
+
+/**
+ * The same view in the trip screen and in My trip: times, how old the data is, what changed, the "I take this"
+ * button and the trains.
+ */
+@Composable
+fun TripBody(vm: MainViewModel, st: CommuteState, row: TripRow, fetchedAt: Long, changes: List<Change>, missing: Boolean) {
+    val t = row.trip
+    TripSummary(t)
+    if (row.copiedFrom == null) Updated(fetchedAt, st.now, arrived = st.now > t.expectedArrival())
+    if (changes.isNotEmpty()) ChangesCard(changes, onAlternatives = vm::showAlternatives)
+    if (missing) {
+        Text(
+            "Shown as last known.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    }
+    TakeButton(vm, st, row)
+    TripDetails(vm, row, st.settings.travelClass)
+}
+
+/** When the trip was downloaded; red once delays are too old to trust. */
+@Composable
+private fun Updated(fetchedAt: Long, now: Long, arrived: Boolean) {
+    val age = now - fetchedAt
+    Text(
+        when {
+            fetchedAt == 0L -> "Not downloaded yet · pull down to refresh"
+            arrived -> "Arrived · updated ${hm(fetchedAt)}"
+            else -> "Updated ${hm(fetchedAt)} · ${ago(age)}"
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (!arrived && (fetchedAt == 0L || age > Freshness.DELAYS)) MaterialTheme.colorScheme.error
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 4.dp),
+    )
+}
+
+/** "I take this", or for your trip, stop watching it. */
+@Composable
+private fun TakeButton(vm: MainViewModel, st: CommuteState, row: TripRow) {
+    // Alerts need the notification permission (Android 13+); the trip is taken either way.
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.takeTrip(row) }
+    if (st.isMyTrip(row.trip)) {
+        OutlinedButton(onClick = vm::dropTrip, modifier = Modifier.padding(horizontal = 4.dp)) {
+            Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Your trip · stop watching")
+        }
+    } else {
+        FilledTonalButton(
+            onClick = { if (Build.VERSION.SDK_INT >= 33) ask.launch(Manifest.permission.POST_NOTIFICATIONS) else vm.takeTrip(row) },
+            modifier = Modifier.padding(horizontal = 4.dp),
+        ) {
+            Icon(Icons.Filled.ConfirmationNumber, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(if (st.myTrip == null) "I take this" else "I take this instead")
         }
     }
 }
@@ -163,7 +218,10 @@ private fun WalkRow(leg: Leg) {
 
 @Composable
 private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Boolean, earlier: List<Long>) {
-    Card(Modifier.fillMaxWidth()) {
+    val colors = if (leg.cancelled) {
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
+    } else CardDefaults.cardColors()
+    Card(Modifier.fillMaxWidth(), colors = colors) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LineBadge(leg, cls)
@@ -174,7 +232,13 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (leg.cancelled) Text("Cancelled", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            leg.problem?.let {
+                Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Cancel, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(6.dp))
+                    Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            }
             Spacer(Modifier.size(8.dp))
             Stop(leg.departure, leg.departureDelay, leg.fromName, leg.platform)
             if (earlier.isNotEmpty()) {

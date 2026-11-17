@@ -54,7 +54,8 @@ Public repo, Unlicense. What the app does is in `README.md`.
   a cancelled train, the train not serving the user's boarding or exit stop, a broken connection, the trip gone
   from the answer. Not for skipped stops where the user neither boards nor alights. Each change is notified once.
   "Alternatives" sets "I'm at" and the time to where and when the problem is.
-- Cancelled trips stand out in the list.
+- Done: the trip screen and My trip share one view (data age, changes, "I take this"); the bottom bar stays on
+  every screen. Cancelled trains (or not stopping where you get on or off) are tinted red with the reason in words.
 - Ratings are tied to a stop (picked from the clock and the delay, changeable); badges are split into stretches.
 - Train map from the formation service: wagons, 1st class, sectors A–F at the user's platform; the sector is
   saved with ratings.

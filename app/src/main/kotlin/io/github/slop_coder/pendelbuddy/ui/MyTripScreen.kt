@@ -24,9 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.slop_coder.pendelbuddy.core.Change
-import io.github.slop_coder.pendelbuddy.core.Freshness
 import io.github.slop_coder.pendelbuddy.core.Station
-import io.github.slop_coder.pendelbuddy.core.Ratings
 
 /** The trip you take: refreshed every 5 minutes while the app is open, or by pulling down. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,31 +57,7 @@ fun MyTripScreen(vm: MainViewModel, st: CommuteState) {
                     )
                     return@Column
                 }
-                TripSummary(mine.trip)
-                val age = st.now - mine.fetchedAt
-                Text(
-                    when {
-                        mine.fetchedAt == 0L -> "Not downloaded yet · pull down to refresh"
-                        mine.arrived(st.now) -> "Arrived · updated ${hm(mine.fetchedAt)}"
-                        else -> "Updated ${hm(mine.fetchedAt)} · ${ago(age)}"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    // Delays older than this are no longer trustworthy.
-                    color = if (mine.fetchedAt == 0L || age > Freshness.DELAYS) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
-                if (st.changes.isNotEmpty()) ChangesCard(st.changes, onAlternatives = vm::showAlternatives)
-                if (!mine.found) {
-                    Text(
-                        "Shown as last known.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                }
-                val cls = st.settings.travelClass
-                TripDetails(vm, TripRow(mine.trip, copiedFrom = null, mine = Ratings.forTrip(st.ratings, mine.trip, cls)), cls)
+                TripBody(vm, st, TripRow(mine.trip, copiedFrom = null, mine = null), mine.fetchedAt, st.changes, missing = !mine.found)
             }
         }
     }

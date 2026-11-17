@@ -3,6 +3,7 @@ package io.github.slop_coder.pendelbuddy.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -50,6 +51,7 @@ fun DebugScreen(vm: MainViewModel, st: CommuteState, onBack: () -> Unit) {
                 actions = { TextButton(onClick = vm::clearDebugLog, enabled = st.debugLog.isNotEmpty()) { Text("Clear") } },
             )
         },
+        contentWindowInsets = WindowInsets(0),
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize()) {
             if (st.debugLog.isEmpty()) {

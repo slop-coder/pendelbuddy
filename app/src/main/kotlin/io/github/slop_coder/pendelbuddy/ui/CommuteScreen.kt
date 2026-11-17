@@ -1,5 +1,6 @@
 package io.github.slop_coder.pendelbuddy.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
@@ -255,8 +257,10 @@ private fun TripItem(row: TripRow, cls: TravelClass, now: Long, durationColor: C
     val t = row.trip
     // Shown for a few minutes after it left (in case it is late); dimmed once it should be gone.
     val gone = t.expectedDeparture() < now
+    // Cancelled (or not stopping where you get on or off): tinted red, times crossed out, the reason in words.
+    val bg = if (t.cancelled) MaterialTheme.colorScheme.errorContainer else Color.Transparent
     Column(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (gone) 0.45f else 1f)
+        Modifier.fillMaxWidth().background(bg).clickable(onClick = onClick).alpha(if (gone) 0.45f else 1f)
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -274,7 +278,13 @@ private fun TripItem(row: TripRow, cls: TravelClass, now: Long, durationColor: C
             Trains(t, cls, Modifier.weight(1f))
             t.platform?.let { Text("Pl. $it", style = MaterialTheme.typography.titleMedium) }
         }
-        if (t.cancelled) Text("Cancelled", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+        for (p in t.trains.mapNotNull { it.problem }) {
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Cancel, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(6.dp))
+                Text(p, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
+            }
+        }
         if (mine) Text("Your trip", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         Mine(row)
     }
@@ -285,6 +295,12 @@ private fun Times(t: Trip) {
     val late = MaterialTheme.colorScheme.error
     Row(verticalAlignment = Alignment.CenterVertically) {
         val dep = t.departureDelay ?: 0
+        if (t.cancelled) {
+            Text(hm(t.departure), style = MaterialTheme.typography.titleLarge, textDecoration = TextDecoration.LineThrough)
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.padding(horizontal = 8.dp).size(18.dp))
+            Text(hm(t.arrival), style = MaterialTheme.typography.titleLarge, textDecoration = TextDecoration.LineThrough)
+            return@Row
+        }
         if (dep > 0) {
             Text(hm(t.departure), style = MaterialTheme.typography.bodyMedium, textDecoration = TextDecoration.LineThrough)
             Spacer(Modifier.width(4.dp))
