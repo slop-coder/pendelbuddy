@@ -240,8 +240,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.update { it.copy(keyCheck = "Checking the key…") }
             val s = _state.value.settings
-            val from = s.home ?: Station("8507000", "Bern")
-            val to = s.work ?: Station("8503000", "Zürich HB")
+            val from = s.home ?: Station("8500010", "Basel SBB")
+            val to = s.work ?: Station("8505000", "Luzern")
             val (ojp, formation) = backend.checkKey(k, from, to)
             withContext(Dispatchers.IO) {
                 // Saved where it works; and where it was saved before but is refused (entered in the wrong place), removed.

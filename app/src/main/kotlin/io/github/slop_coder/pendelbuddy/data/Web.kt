@@ -32,7 +32,7 @@ private fun HttpURLConnection.reason(): String? = runCatching {
 
 /** Plain HTTP GETs, identified as this app so the API operators can see who is calling. */
 object Http {
-    private const val USER_AGENT = "PendelBuddy/0.1 (Android; https://github.com/slop-coder/pendelbuddy)"
+    private val USER_AGENT = "PendelBuddy/${BuildConfig.VERSION_NAME} (Android; https://github.com/slop-coder/pendelbuddy)"
 
     suspend fun text(url: String): String = withContext(Dispatchers.IO) {
         val c = open(url)
