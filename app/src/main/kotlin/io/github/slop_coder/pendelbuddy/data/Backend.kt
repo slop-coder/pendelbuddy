@@ -206,7 +206,7 @@ class Backend private constructor(context: Context) {
 
     /** Saves [updated] as your trip and notifies the changes not announced before. */
     private suspend fun publish(updated: MyTrip, now: Long) {
-        val news = Changes.of(updated, now).filter { it.key !in updated.alerted }
+        val news = Changes.of(updated, now).filter { it.notify && it.key !in updated.alerted }
         val saved = updated.copy(alerted = updated.alerted + news.map { it.key })
         _myTrip.value = saved
         store.saveMyTrip(saved)

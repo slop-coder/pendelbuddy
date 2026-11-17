@@ -5,8 +5,9 @@ import java.time.format.DateTimeFormatter
 /**
  * Something about your trip that changes your plans. [key] stays the same while the problem does, so each one is
  * announced once; [station] and [at] are where and when to look for other trips (null: nothing to replan).
+ * [notify] = false: only shown in the app (a tight connection).
  */
-data class Change(val key: String, val text: String, val station: Station? = null, val at: Long? = null)
+data class Change(val key: String, val text: String, val station: Station? = null, val at: Long? = null, val notify: Boolean = true)
 
 /**
  * The material changes of your trip: 10+ minutes late, a new platform where you get on, a cancelled train, a train
@@ -51,7 +52,11 @@ object Changes {
         return out.distinctBy { it.key }
     }
 
-    /** Changes where the next train leaves before you can get there (arrival plus the walk in between). */
+    /**
+     * Changes that got shorter than planned. OJP's transfer time is the planned connection time with a safety
+     * margin, not the walk itself (a 6 min transfer can be a 3 min walk): less than that is tight (shown, not
+     * notified), less than half of it is lost.
+     */
     private fun lostConnections(t: Trip): List<Change> {
         val out = mutableListOf<Change>()
         var prev: Leg? = null
@@ -63,13 +68,20 @@ object Changes {
                 continue
             }
             val a = prev
-            if (a != null && !leg.cancelled && leg.expectedDeparture() < a.expectedArrival() + walk) {
-                out += Change(
-                    "connection:$n",
-                    "Connection at ${a.toName} lost: ${a.line} arrives ${hm(a.expectedArrival())}, ${leg.line} leaves ${hm(leg.expectedDeparture())}",
-                    Station(a.toId, a.toName),
-                    a.expectedArrival(),
-                )
+            val gap = a?.let { leg.expectedDeparture() - it.expectedArrival() }
+            if (a != null && gap != null && !leg.cancelled && gap < walk) {
+                val times = "${a.line} arrives ${hm(a.expectedArrival())}, ${leg.line} leaves ${hm(leg.expectedDeparture())}"
+                out += if (gap < walk / 2) {
+                    Change("connection:$n", "Connection at ${a.toName} lost: $times", Station(a.toId, a.toName), a.expectedArrival())
+                } else {
+                    Change(
+                        "tight:$n",
+                        "Tight connection at ${a.toName}: ${gap / 60} min instead of ${walk / 60} ($times)",
+                        Station(a.toId, a.toName),
+                        a.expectedArrival(),
+                        notify = false,
+                    )
+                }
             }
             prev = leg
             walk = 0

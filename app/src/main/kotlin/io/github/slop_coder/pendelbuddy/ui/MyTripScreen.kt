@@ -82,11 +82,13 @@ fun ChangesCard(
     onAlternatives: (Station, Long) -> Unit,
     onMyTrip: (() -> Unit)? = null,
 ) {
+    // Only a tight connection: a warning, not an alarm.
+    val serious = changes.any { it.notify }
     Card(
         modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            containerColor = if (serious) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = if (serious) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
         ),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

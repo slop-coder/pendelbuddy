@@ -51,7 +51,9 @@ Public repo, Unlicense. What the app does is in `README.md`.
   age shown. An exact alarm starts `TripWatchService` (foreground, dataSync) 10 min before; it keeps checking with
   the app closed. `Backend` is the one place that downloads, shared by the view model and the service.
 - Done: notify only on material changes (`core/Changes.kt`): 10+ min delay, platform change where the user boards,
-  a cancelled train, the train not serving the user's boarding or exit stop, a broken connection, the trip gone
+  a cancelled train, the train not serving the user's boarding or exit stop, a lost connection (under half of
+  OJP's transfer time, which is the planned connection time with margin, not the walk; under the full time is
+  "tight": shown, not notified), the trip gone
   from the answer. Not for skipped stops where the user neither boards nor alights. Each change is notified once.
   "Alternatives" sets "I'm at" and the time to where and when the problem is.
 - Done: Settings → Testing (only while a trip is set): fake delay, cancellation, new platform, not stopping at

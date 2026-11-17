@@ -1,6 +1,7 @@
 package io.github.slop_coder.pendelbuddy.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
@@ -102,14 +103,19 @@ class ChangesTest {
     }
 
     @Test
-    fun lostConnection() {
-        // IC 8 arrives 08:07, the walk takes 6 min, the S 3 leaves 08:10.
-        val c = Changes.of(mine(ic(arrDelay = 5), change, s3()), at(7, 20))
-        assertEquals(listOf("connection:1"), c.map { it.key })
-        assertEquals("Musterdorf", c.single().station?.name)
-        assertEquals(at(8, 7), c.single().at)
-        // The S 3 waits (late too): still reachable.
-        assertEquals(emptyList<String>(), keys(mine(ic(arrDelay = 5), change, s3(depDelay = 3))))
+    fun tightOrLostConnection() {
+        // 6 min planned to change. IC 8 arrives 08:07, the S 3 leaves 08:10: 3 min, tight but shown only.
+        val tight = Changes.of(mine(ic(arrDelay = 5), change, s3()), at(7, 20)).single()
+        assertEquals("tight:1", tight.key)
+        assertFalse(tight.notify)
+        // Arrives 08:08: 2 min, under half the planned time: lost, notified, alternatives from where you change.
+        val lost = Changes.of(mine(ic(arrDelay = 6), change, s3()), at(7, 20)).single()
+        assertEquals("connection:1", lost.key)
+        assertTrue(lost.notify)
+        assertEquals("Musterdorf", lost.station?.name)
+        assertEquals(at(8, 8), lost.at)
+        // The S 3 waits (late too): fine again.
+        assertEquals(emptyList<String>(), keys(mine(ic(arrDelay = 6), change, s3(depDelay = 4))))
     }
 
     @Test
