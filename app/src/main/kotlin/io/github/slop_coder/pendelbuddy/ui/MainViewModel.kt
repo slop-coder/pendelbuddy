@@ -23,6 +23,7 @@ import io.github.slop_coder.pendelbuddy.core.Route
 import io.github.slop_coder.pendelbuddy.core.SWISS
 import io.github.slop_coder.pendelbuddy.core.Settings
 import io.github.slop_coder.pendelbuddy.core.Station
+import io.github.slop_coder.pendelbuddy.core.TrainFormation
 import io.github.slop_coder.pendelbuddy.core.Trip
 import io.github.slop_coder.pendelbuddy.core.DayWeather
 import io.github.slop_coder.pendelbuddy.core.DebugEntry
@@ -315,10 +316,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Debug builds: saves the formation answer of [leg] for the parser (see the request log). */
-    fun downloadFormation(leg: Leg) {
-        viewModelScope.launch { backend.downloadFormation(leg) }
+    private val _formations = MutableStateFlow<Map<String, TrainFormation>>(emptyMap())
+    /** Trains as they stand where you get on, by [formationKey]; filled when a train card is shown. */
+    val formations: StateFlow<Map<String, TrainFormation>> = _formations
+
+    fun formationKey(leg: Leg) = "${leg.trainKey}|${leg.departure}"
+
+    fun loadFormation(leg: Leg) {
+        if (!_state.value.formationKeySet) return
+        viewModelScope.launch {
+            val f = backend.formation(leg, "Opened trip") ?: return@launch
+            _formations.update { it + (formationKey(leg) to f) }
+        }
     }
+
+    /** The sector you sat in on this train last time, to start from. */
+    fun lastSector(leg: Leg): String? =
+        ratings.filter { it.trainKey == leg.trainKey && it.sector != null }.maxByOrNull { it.ratedAt }?.sector
 
     fun pullToRefreshMyTrip() {
         viewModelScope.launch { refreshMyTrip(cause = "Pull to refresh") }
@@ -360,7 +374,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves a rating of [leg] together with the forecast it showed; earlier ratings are kept for analysis. */
-    fun rate(leg: Leg, percent: Int, call: Call?) {
+    fun rate(leg: Leg, percent: Int, call: Call?, sector: String?) {
         // The forecast from the stop rated from, or for the whole ride (its worst stretch).
         val forecast = call?.capacity ?: leg.capacity
         val r = Rating(
@@ -379,6 +393,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ratedAt = nowSec(),
             callId = call?.id,
             callName = call?.name,
+            sector = sector,
         )
         ratings = ratings + r
         _state.update { it.copy(ratings = ratings.sortedByDescending { r -> r.ratedAt }) }

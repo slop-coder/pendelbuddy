@@ -49,6 +49,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -59,7 +61,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import io.github.slop_coder.pendelbuddy.BuildConfig
 import io.github.slop_coder.pendelbuddy.core.Call
 import io.github.slop_coder.pendelbuddy.core.Change
 import io.github.slop_coder.pendelbuddy.core.Freshness
@@ -226,6 +227,10 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
     val colors = if (leg.cancelled) {
         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
     } else CardDefaults.cardColors()
+    val formations by vm.formations.collectAsState()
+    val formation = formations[vm.formationKey(leg)]
+    LaunchedEffect(vm.formationKey(leg)) { if (!leg.walk) vm.loadFormation(leg) }
+    var sector by remember(leg.trainKey) { mutableStateOf(vm.lastSector(leg)) }
     Card(Modifier.fillMaxWidth(), colors = colors) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -258,6 +263,10 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
             Stop(leg.arrival, leg.arrivalDelay, leg.toName, leg.arrivalPlatform, leg.plannedArrivalPlatform)
             Spacer(Modifier.size(8.dp))
             Forecast(leg, cls)
+            formation?.let {
+                Spacer(Modifier.size(8.dp))
+                TrainMap(it, cls, sector) { s -> sector = s }
+            }
             vm.averageFor(leg)?.let {
                 Text(
                     "Your ratings of this train: ${it.percent}% · ${Ratings.label(it.percent)} (${it.count}×)",
@@ -277,13 +286,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
             }
             if (canRate) {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                RatingBar(vm, leg)
-            }
-            // Debug builds only, until the train map exists: keeps the formation service's answer on the phone.
-            if (BuildConfig.DEBUG && leg.trainNumber != null) {
-                TextButton(onClick = { vm.downloadFormation(leg) }, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    Text("Debug: download formation (${leg.evu})", style = MaterialTheme.typography.labelMedium)
-                }
+                RatingBar(vm, leg, sector)
             }
         }
     }
@@ -343,7 +346,7 @@ private fun className(c: TravelClass) = if (c == TravelClass.FIRST) "1st class" 
  * left (picked from the clock, can be changed).
  */
 @Composable
-private fun RatingBar(vm: MainViewModel, leg: Leg) {
+private fun RatingBar(vm: MainViewModel, leg: Leg, sector: String?) {
     var call by remember(leg.trainKey, leg.departure) { mutableStateOf(leg.callAt(System.currentTimeMillis() / 1000)) }
     var saved by remember(leg, call) { mutableStateOf(vm.ratingFor(leg, call)?.percent) }
     var value by remember(leg, call) { mutableFloatStateOf((saved ?: 50).toFloat()) }
@@ -360,7 +363,7 @@ private fun RatingBar(vm: MainViewModel, leg: Leg) {
             )
         }
         FilledTonalButton(
-            onClick = { vm.rate(leg, percent, call); saved = percent },
+            onClick = { vm.rate(leg, percent, call, sector); saved = percent },
             enabled = saved != percent,
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
             modifier = Modifier.height(34.dp),

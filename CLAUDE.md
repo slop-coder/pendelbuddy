@@ -25,7 +25,8 @@ Public repo, Unlicense. What the app does is in `README.md`.
   Verified on a real answer: `StopPlaceRef` `ch:1:sloid:<didok>` works; `siri:ExpectedDepartureOccupancy` per
   stop (FareClass may have a trailing space); TransferLegs only have a Duration; answers are ~1.4 MB of
   network-wide PtSituations but arrive gzipped at ~25 kB. Each TimedLeg has `JourneyRef` and `OperatingDayRef`.
-- **Train Formation Service** (opentransportdata.swiss): the same token is enabled for it. SBB trains only.
+- **Train Formation Service** (opentransportdata.swiss): needs its own token (HTTP 403 "Access to this API has been
+  disallowed" with the OJP one). Data from today to 3 days ahead; companies SBBP, BLSP, SOB, THURBO… (`evu`).
 - **Weather**: Open-Meteo, `models=meteoswiss_icon_ch2`.
 - The daily occupancy ZIP was built once and dropped at the user's request; occupancy comes from OJP.
 
@@ -64,8 +65,10 @@ Public repo, Unlicense. What the app does is in `README.md`.
 - Done: ratings are tied to the stop the train last left (`Leg.callAt`, changeable in the rating bar; older
   ratings without a stop count for the whole ride); badges are split into stretches as long as each takes
   (`Leg.levelSpans`), left = where you get on.
-- Train map from the formation service: wagons, 1st class, sectors A–F at the user's platform; the sector is
-  saved with ratings.
+- Done: train map from the Train Formation Service (`/formation/v2/formations_full`, its **own key**, separate
+  from OJP's: each API has its own token). Parsed from the per-stop `formationShortString` (the vehicle list
+  overlaps between formation blocks); see `core/Formation.kt` for the syntax. Fetched when a train card is shown,
+  kept 30 min; the tapped sector is saved with ratings.
 
 ## Build and test
 

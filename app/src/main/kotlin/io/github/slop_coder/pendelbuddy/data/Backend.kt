@@ -8,6 +8,8 @@ import io.github.slop_coder.pendelbuddy.core.Changes
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.DebugEntry
 import io.github.slop_coder.pendelbuddy.core.Fake
+import io.github.slop_coder.pendelbuddy.core.Formations
+import io.github.slop_coder.pendelbuddy.core.TrainFormation
 import io.github.slop_coder.pendelbuddy.core.LOOK_BACK
 import io.github.slop_coder.pendelbuddy.core.Leg
 import io.github.slop_coder.pendelbuddy.core.MyTrip
@@ -27,8 +29,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private class CachedFormation(val fetchedAt: Long, val stops: List<TrainFormation>)
 
 /** Where the last timetable came from, or what went wrong with OJP. */
 data class Source(val name: String? = null, val ojpProblem: String? = null)
@@ -149,23 +154,41 @@ class Backend private constructor(context: Context) {
         }
     }
 
+    private val formations = mutableMapOf<String, CachedFormation>()
+    private val formationLock = Mutex()
+
     /**
-     * Debug builds: downloads the formation of [leg] and keeps the answer in files/formation-last.json; the request
-     * log says how it went. For writing the train map's parser.
+     * The train of [leg] as it stands where you get on, from the formation service (its own key). Kept for
+     * [FORMATION_MAX] seconds; null without a key, for another day than today to 3 days ahead, or when the
+     * service does not know the train (not every company delivers formations).
      */
-    suspend fun downloadFormation(leg: Leg) {
-        val key = withContext(Dispatchers.IO) { secrets.get(ApiKey.FORMATION) } ?: return
-        val number = leg.trainNumber ?: return
-        val date = leg.operatingDay ?: leg.departure.toSwiss().toLocalDate().toString()
-        try {
-            logged("Formation", "${leg.line} no. $number (${leg.evu}), $date", "Debug download", { FormationClient.full(key, leg.evu, date, number) }) {
-                "${it.length / 1024} kB"
+    suspend fun formation(leg: Leg, cause: String): TrainFormation? = formationLock.withLock {
+        val number = leg.trainNumber ?: return@withLock null
+        val day = leg.operatingDay?.let { LocalDate.parse(it) } ?: leg.departure.toSwiss().toLocalDate()
+        val today = nowSec().toSwiss().toLocalDate()
+        if (day.isBefore(today) || day.isAfter(today.plusDays(3))) return@withLock null
+        val id = "$day|${leg.evu}|$number"
+        val now = nowSec()
+        val cached = formations[id]?.takeIf { now - it.fetchedAt < FORMATION_MAX }
+        val stops = cached?.stops ?: run {
+            val key = withContext(Dispatchers.IO) { secrets.get(ApiKey.FORMATION) } ?: return@withLock null
+            try {
+                val body = logged("Formation", "${leg.line} no. $number (${leg.evu}), $day", cause, { FormationClient.full(key, leg.evu, day.toString(), number) }) {
+                    "${it.length / 1024} kB"
+                }
+                withContext(Dispatchers.Default) { Formations.parse(body) }.also {
+                    formations[id] = CachedFormation(now, it)
+                    formations.entries.removeAll { (k, _) -> LocalDate.parse(k.substringBefore('|')).isBefore(today) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Formation download failed", e)
+                // Offline or unknown train: an older copy is better than nothing.
+                formations[id]?.stops ?: return@withLock null
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Formation download failed", e)
         }
+        stops.firstOrNull { it.stopId == leg.fromId }
     }
 
     /** "I take this": [mine] becomes your trip, watched until you arrive. */
@@ -262,6 +285,8 @@ class Backend private constructor(context: Context) {
     companion object {
         private const val TAG = "PendelBuddy"
         private const val RETRY = 60L
+        /** Formations change when wagons are added or swapped; asked again after half an hour. */
+        private const val FORMATION_MAX = 30 * 60L
         private val WHEN = DateTimeFormatter.ofPattern("EEE d MMM HH:mm", Locale.ENGLISH)
 
         @Volatile private var instance: Backend? = null
