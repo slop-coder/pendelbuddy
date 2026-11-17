@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ConfirmationNumber
@@ -33,6 +34,9 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -56,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import io.github.slop_coder.pendelbuddy.core.Call
 import io.github.slop_coder.pendelbuddy.core.Change
 import io.github.slop_coder.pendelbuddy.core.Freshness
 import io.github.slop_coder.pendelbuddy.core.Leg
@@ -259,6 +264,17 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
+            // Stretch by stretch, where you rated from a stop.
+            val byStop = vm.averagesByStop(leg)
+            if (byStop.size > 1 || byStop.any { it.first.id != leg.calls.firstOrNull()?.id }) {
+                for ((call, avg) in byStop) {
+                    Text(
+                        "From ${call.name}: ${avg.percent}% (${avg.count}×)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (canRate) {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 RatingBar(vm, leg)
@@ -317,11 +333,15 @@ private fun SectionRow(stretch: String, level: Int?) {
 
 private fun className(c: TravelClass) = if (c == TravelClass.FIRST) "1st class" else "2nd class"
 
-/** Rate this train from 10% (almost empty) to 110% (no seats, many standing). */
+/**
+ * Rate this train from 10% (almost empty) to 110% (no seats, many standing), for the stretch from the stop it last
+ * left (picked from the clock, can be changed).
+ */
 @Composable
 private fun RatingBar(vm: MainViewModel, leg: Leg) {
-    var saved by remember(leg) { mutableStateOf(vm.ratingFor(leg)?.percent) }
-    var value by remember(leg) { mutableFloatStateOf((saved ?: 50).toFloat()) }
+    var call by remember(leg.trainKey, leg.departure) { mutableStateOf(leg.callAt(System.currentTimeMillis() / 1000)) }
+    var saved by remember(leg, call) { mutableStateOf(vm.ratingFor(leg, call)?.percent) }
+    var value by remember(leg, call) { mutableFloatStateOf((saved ?: 50).toFloat()) }
     val percent = (value / Ratings.STEP).roundToInt() * Ratings.STEP
     // Rating a train before or after the day it runs is allowed, but say which run it is.
     val other = leg.departure.toSwiss().toLocalDate().takeIf { it != LocalDate.now(SWISS) }
@@ -335,7 +355,7 @@ private fun RatingBar(vm: MainViewModel, leg: Leg) {
             )
         }
         FilledTonalButton(
-            onClick = { vm.rate(leg, percent); saved = percent },
+            onClick = { vm.rate(leg, percent, call); saved = percent },
             enabled = saved != percent,
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
             modifier = Modifier.height(34.dp),
@@ -348,4 +368,25 @@ private fun RatingBar(vm: MainViewModel, leg: Leg) {
         steps = (Ratings.SCALE.last - Ratings.SCALE.first) / Ratings.STEP - 1,
         modifier = Modifier.height(32.dp),
     )
+    if (leg.calls.size > 1) StopPicker(leg, call) { call = it }
+}
+
+/** Which stretch the rating is for: from the stop the train last left. */
+@Composable
+private fun StopPicker(leg: Leg, call: Call?, onPick: (Call) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { open = true }, contentPadding = PaddingValues(horizontal = 4.dp)) {
+            Text("From ${call?.name ?: leg.fromName}", style = MaterialTheme.typography.labelLarge)
+            Icon(Icons.Filled.ArrowDropDown, "Pick the stop")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for (c in leg.calls) {
+                DropdownMenuItem(
+                    text = { Text("${hm(c.departure)}  ${c.name}") },
+                    onClick = { onPick(c); open = false },
+                )
+            }
+        }
+    }
 }

@@ -195,6 +195,12 @@ data class Rating(
     val forecastSecond: Int? = null,
     /** When the rating was made, epoch seconds. */
     val ratedAt: Long = 0,
+    /**
+     * The stop the rated stretch starts at (the train had last left it); null = the whole ride (older ratings, or
+     * no stops known). The forecast fields are then the forecast from that stop.
+     */
+    val callId: String? = null,
+    val callName: String? = null,
 ) {
     fun forecast() = if (travelClass == TravelClass.FIRST) forecastFirst else forecastSecond
 }
@@ -216,30 +222,45 @@ object Ratings {
         else -> "No seats, many standing"
     }
 
-    /** Your average for this train in this class on the same kind of day, or null if you never rated it. */
-    fun average(all: List<Rating>, leg: Leg, cls: TravelClass): Average? {
+    /**
+     * Your average for this train in this class on the same kind of day, or null if you never rated it. With
+     * [callId]: only ratings of the stretch from that stop (and whole-ride ratings); without: all of them.
+     */
+    fun average(all: List<Rating>, leg: Leg, cls: TravelClass, callId: String? = null): Average? {
         val key = leg.trainKey ?: return null
         val type = DayType.of(leg.departure.toSwiss().toLocalDate())
         val mine = latest(all).filter {
-            it.trainKey == key && it.travelClass == cls && DayType.of(LocalDate.parse(it.date)) == type
+            it.trainKey == key && it.travelClass == cls && DayType.of(LocalDate.parse(it.date)) == type &&
+                (callId == null || it.callId == null || it.callId == callId)
         }
         if (mine.isEmpty()) return null
         return Average(mine.map { it.percent }.average().let { Math.round(it / STEP).toInt() * STEP }, mine.size)
+    }
+
+    /** Your averages stretch by stretch: for each stop of the ride rated from, in the order of the ride. */
+    fun byStop(all: List<Rating>, leg: Leg, cls: TravelClass): List<Pair<Call, Average>> {
+        val key = leg.trainKey ?: return emptyList()
+        val type = DayType.of(leg.departure.toSwiss().toLocalDate())
+        val mine = latest(all).filter { it.trainKey == key && it.travelClass == cls && it.callId != null && DayType.of(LocalDate.parse(it.date)) == type }
+        return leg.calls.mapNotNull { c ->
+            val rs = mine.filter { it.callId == c.id }.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            c to Average(rs.map { it.percent }.average().let { Math.round(it / STEP).toInt() * STEP }, rs.size)
+        }
     }
 
     /** The fullest train leg of the trip by your ratings. */
     fun forTrip(all: List<Rating>, trip: Trip, cls: TravelClass) =
         trip.trains.mapNotNull { average(all, it, cls) }.maxByOrNull { it.percent }
 
-    /** All ratings are kept; a train rated twice on one day counts once, with its latest rating. */
+    /** All ratings are kept; a stretch of a train rated twice on one day counts once, with its latest rating. */
     fun latest(all: List<Rating>) =
-        all.groupBy { Triple(it.trainKey, it.date, it.travelClass) }.map { (_, rs) -> rs.maxBy { it.ratedAt } }
+        all.groupBy { listOf(it.trainKey, it.date, it.travelClass, it.callId) }.map { (_, rs) -> rs.maxBy { it.ratedAt } }
 
-    /** The latest rating of this train on its day, to start the rating bar from. */
-    fun current(all: List<Rating>, leg: Leg, cls: TravelClass): Rating? {
+    /** The latest rating of this train on its day from stop [callId], to start the rating bar from. */
+    fun current(all: List<Rating>, leg: Leg, cls: TravelClass, callId: String? = null): Rating? {
         val key = leg.trainKey ?: return null
         val date = leg.departure.toSwiss().toLocalDate().toString()
-        return all.filter { it.trainKey == key && it.date == date && it.travelClass == cls }.maxByOrNull { it.ratedAt }
+        return all.filter { it.trainKey == key && it.date == date && it.travelClass == cls && it.callId == callId }.maxByOrNull { it.ratedAt }
     }
 
     /** Ratings grouped by the forecast level they were made against (null = no forecast), for the class rated. */
@@ -252,7 +273,7 @@ object Ratings {
 
     /** Every rating, one row each, for analysis in a spreadsheet. Times are Swiss local time. */
     fun toCsv(all: List<Rating>): String = buildString {
-        appendLine("rated_at,date,departure,line,train_number,from,to,delay_min,class,rating_percent,forecast_level,forecast_first,forecast_second")
+        appendLine("rated_at,date,departure,line,train_number,from,to,delay_min,class,rating_percent,forecast_level,forecast_first,forecast_second,rated_from")
         for (r in all.sortedBy { it.ratedAt }) {
             appendLine(
                 listOf(
@@ -266,6 +287,7 @@ object Ratings {
                     r.forecast()?.toString().orEmpty(),
                     r.forecastFirst?.toString().orEmpty(),
                     r.forecastSecond?.toString().orEmpty(),
+                    csv(r.callName),
                 ).joinToString(",")
             )
         }

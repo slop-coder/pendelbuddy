@@ -1,6 +1,7 @@
 package io.github.slop_coder.pendelbuddy.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.LocalDateTime
@@ -75,8 +76,36 @@ class CommuteTest {
         assertEquals(listOf(ForecastCheck(2, 1, 70), ForecastCheck(3, 1, 90), ForecastCheck(null, 2, 10)), checks)
 
         val csv = Ratings.toCsv(all).lines()
-        assertEquals("rated_at,date,departure,line,train_number,from,to,delay_min,class,rating_percent,forecast_level,forecast_first,forecast_second", csv[0])
+        assertEquals("rated_at,date,departure,line,train_number,from,to,delay_min,class,rating_percent,forecast_level,forecast_first,forecast_second,rated_from", csv[0])
         assertEquals(6, csv.count { it.isNotEmpty() }) // every rating, re-ratings included
-        assertEquals("1970-01-01T01:00:02,2026-11-10,,IC 8,,Talwil,,,2,100,3,,3", csv[2])
+        assertEquals("1970-01-01T01:00:02,2026-11-10,,IC 8,,Talwil,,,2,100,3,,3,", csv[2])
+    }
+
+    @Test
+    fun ratingsPerStop() {
+        val dep = LocalDateTime.of(2026, 11, 16, 7, 2).atZone(SWISS).toEpochSecond()
+        val talwil = Call("8599008", "Talwil", dep, Capacity(1, 1))
+        val zwischenau = Call("8599007", "Zwischenau", dep + 600, Capacity(1, 3))
+        val leg = Leg(
+            "IC 8", fromId = "8599008", fromName = "Talwil", toName = "Musterdorf", departure = dep, arrival = dep + 1800,
+            departureDelay = 2, calls = listOf(talwil, zwischenau),
+        )
+        // The stop the train last left, allowing for its 2 min delay.
+        assertEquals(talwil, leg.callAt(dep - 300))
+        assertEquals(talwil, leg.callAt(dep + 700))
+        assertEquals(zwischenau, leg.callAt(dep + 720))
+        // Stretches for the badge: 10 min low, then 20 min high.
+        assertEquals(listOf(1 to 600L, 3 to 1200L), leg.levelSpans(TravelClass.SECOND))
+        assertEquals(listOf(1 to 1800L), leg.levelSpans(TravelClass.FIRST))
+
+        var t = 0L
+        fun r(p: Int, c: Call?) = Rating(leg.trainKey!!, "2026-11-16", p, TravelClass.SECOND, "IC 8", "Talwil", ratedAt = ++t, callId = c?.id, callName = c?.name)
+        // Both stretches rated the same day: both count; a whole-ride rating counts for every stretch.
+        val all = listOf(r(20, talwil), r(100, zwischenau), r(60, null))
+        assertEquals(Average(60, 3), Ratings.average(all, leg, TravelClass.SECOND))
+        assertEquals(Average(40, 2), Ratings.average(all, leg, TravelClass.SECOND, talwil.id))
+        assertEquals(listOf(talwil to Average(20, 1), zwischenau to Average(100, 1)), Ratings.byStop(all, leg, TravelClass.SECOND))
+        assertEquals(100, Ratings.current(all, leg, TravelClass.SECOND, zwischenau.id)?.percent)
+        assertTrue(Ratings.toCsv(all).lines()[2].endsWith(",Zwischenau"))
     }
 }

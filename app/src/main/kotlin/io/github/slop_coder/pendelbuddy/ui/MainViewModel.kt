@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.slop_coder.pendelbuddy.core.Average
+import io.github.slop_coder.pendelbuddy.core.Call
 import io.github.slop_coder.pendelbuddy.core.Change
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
@@ -341,7 +342,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves a rating of [leg] together with the forecast it showed; earlier ratings are kept for analysis. */
-    fun rate(leg: Leg, percent: Int) {
+    fun rate(leg: Leg, percent: Int, call: Call?) {
+        // The forecast from the stop rated from, or for the whole ride (its worst stretch).
+        val forecast = call?.capacity ?: leg.capacity
         val r = Rating(
             trainKey = leg.trainKey ?: return,
             date = leg.departure.toSwiss().toLocalDate().toString(),
@@ -353,9 +356,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             trainNumber = leg.trainNumber,
             departure = leg.departure,
             departureDelay = leg.departureDelay,
-            forecastFirst = leg.capacity.first,
-            forecastSecond = leg.capacity.second,
+            forecastFirst = forecast.first,
+            forecastSecond = forecast.second,
             ratedAt = nowSec(),
+            callId = call?.id,
+            callName = call?.name,
         )
         ratings = ratings + r
         _state.update { it.copy(ratings = ratings.sortedByDescending { r -> r.ratedAt }) }
@@ -366,7 +371,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun ratingFor(leg: Leg): Rating? = Ratings.current(ratings, leg, _state.value.settings.travelClass)
+    fun ratingFor(leg: Leg, call: Call?): Rating? = Ratings.current(ratings, leg, _state.value.settings.travelClass, call?.id)
+
+    fun averagesByStop(leg: Leg): List<Pair<Call, Average>> = Ratings.byStop(ratings, leg, _state.value.settings.travelClass)
 
     fun averageFor(leg: Leg): Average? = Ratings.average(ratings, leg, _state.value.settings.travelClass)
 

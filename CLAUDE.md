@@ -61,7 +61,9 @@ Public repo, Unlicense. What the app does is in `README.md`.
   hidden while no trip is set.
 - Done: the trip screen and My trip share one view (data age, changes, "I take this"); the bottom bar stays on
   every screen. Cancelled trains (or not stopping where you get on or off) are tinted red with the reason in words.
-- Ratings are tied to a stop (picked from the clock and the delay, changeable); badges are split into stretches.
+- Done: ratings are tied to the stop the train last left (`Leg.callAt`, changeable in the rating bar; older
+  ratings without a stop count for the whole ride); badges are split into stretches as long as each takes
+  (`Leg.levelSpans`), left = where you get on.
 - Train map from the formation service: wagons, 1st class, sectors A–F at the user's platform; the sector is
   saved with ratings.
 

@@ -1,9 +1,14 @@
 package io.github.slop_coder.pendelbuddy.ui
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -327,17 +332,31 @@ private fun Trains(t: Trip, cls: TravelClass, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The line, colored by the occupancy forecast stretch by stretch: left is where you get on (will you find a seat?),
+ * right where you get off, each part as long as that stretch takes.
+ */
 @Composable
 fun LineBadge(leg: Leg, cls: TravelClass) {
-    val (bg, fg) = occupancyColors(leg.capacity.of(cls))
-    Surface(color = bg, contentColor = fg, shape = RoundedCornerShape(6.dp)) {
-        Text(
-            leg.line ?: "?",
-            Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            textDecoration = if (leg.cancelled) TextDecoration.LineThrough else null,
-        )
+    val spans = leg.levelSpans(cls)
+    val (_, fg) = occupancyColors(spans.firstOrNull()?.first)
+    val colors = spans.map { occupancyColors(it.first).first to it.second.toFloat() }
+    Surface(color = Color.Transparent, contentColor = fg, shape = RoundedCornerShape(6.dp)) {
+        Box(Modifier.height(IntrinsicSize.Min).width(IntrinsicSize.Max)) {
+            Row(Modifier.matchParentSize()) {
+                for ((c, w) in colors) Box(Modifier.weight(w).fillMaxHeight().background(c))
+            }
+            Text(
+                leg.line ?: "?",
+                Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                // Readable where it runs over a part of another color.
+                style = MaterialTheme.typography.titleMedium.copy(
+                    shadow = if (colors.size > 1) Shadow(if (fg == Color.White) Color.Black else Color.White, blurRadius = 3f) else null,
+                ),
+                fontWeight = FontWeight.Bold,
+                textDecoration = if (leg.cancelled) TextDecoration.LineThrough else null,
+            )
+        }
     }
 }
 

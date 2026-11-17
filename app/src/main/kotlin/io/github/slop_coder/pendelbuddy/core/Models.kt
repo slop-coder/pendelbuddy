@@ -140,6 +140,29 @@ data class Leg(
         return out
     }
 
+    /**
+     * The occupancy in [cls] stretch by stretch with how long each lasts (seconds), the same level in a row joined;
+     * for the badge, whose left end is where you get on. Without stops in between: the whole ride at its worst.
+     */
+    fun levelSpans(cls: TravelClass): List<Pair<Int?, Long>> {
+        if (calls.isEmpty()) return listOf(capacity.of(cls) to (arrival - departure).coerceAtLeast(1))
+        val out = mutableListOf<Pair<Int?, Long>>()
+        calls.forEachIndexed { i, c ->
+            val end = calls.getOrNull(i + 1)?.departure ?: arrival
+            val level = c.capacity.of(cls)
+            val span = (end - c.departure).coerceAtLeast(1)
+            val last = out.lastOrNull()
+            if (last != null && last.first == level) out[out.size - 1] = level to last.second + span else out += level to span
+        }
+        return out
+    }
+
+    /** The stop the train last left at [now] (allowing for its delay): where a rating made now starts. */
+    fun callAt(now: Long): Call? {
+        val late = 60L * (departureDelay ?: 0)
+        return calls.lastOrNull { it.departure + late <= now } ?: calls.firstOrNull()
+    }
+
     fun expectedDeparture() = departure + 60L * (departureDelay ?: 0)
     fun expectedArrival() = arrival + 60L * (arrivalDelay ?: 0)
 

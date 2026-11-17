@@ -6,8 +6,8 @@ home in the afternoon: leave time, arrival, changes, platform, delays and how fu
 - **Day and time**: tabs Mo–Su (the next such day) and a time picker with morning/evening shortcuts. The working
   week's commute (to work 05:30–08:00, home 15:30–18:30) is fetched ahead, so those times need no request.
 - **Weather card**: the picked day at your destination, hour by hour, with rain or snow by intensity.
-- **Trip list**: train badges colored by expected occupancy (worst stretch of each ride), travel time from green
-  (fastest shown) to red (slowest).
+- **Trip list**: train badges colored by expected occupancy stretch by stretch (left: where you get on, so you
+  see if you will find a seat), travel time from green (fastest shown) to red (slowest).
 - **I'm at…**: pick the station you are at (home, a station in between such as a breakfast stop, work, or any other)
   to see the trips from there. Picking the destination plans the trip back.
 - **My trip**: tap "I take this" on a trip to follow it in its own tab. It is downloaded again every 5 minutes
@@ -18,8 +18,9 @@ home in the afternoon: leave time, arrival, changes, platform, delays and how fu
   only shows as "tight" in the app). "Alternatives"
   shows the trips from where and when that happens.
 - **Fullness**: the occupancy forecast for your class (1st/2nd) where the timetable has one, plus your own ratings:
-  tap a trip and rate a train from 10% (almost empty) to 110% (no seats, many standing). Your average for that train on
-  the same kind of day is shown on later trips.
+  tap a trip and rate a train from 10% (almost empty) to 110% (no seats, many standing), for the stretch from the stop
+  it last left (picked for you, can be changed). Your average for that train on the same kind of day is shown on later
+  trips, also stretch by stretch.
 - **Offline**: trips are saved, and the whole commute is fetched once a day. Without internet the app shows today's
   saved trips, or the timetable of the same weekday from an earlier week. Delays are hidden after 10 minutes, occupancy
   after 12 hours or on a copied timetable, weather after 3 hours. Data from before the December timetable change is
