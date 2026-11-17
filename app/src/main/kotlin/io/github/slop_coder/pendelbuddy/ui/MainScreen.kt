@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ fun MainScreen(vm: MainViewModel) {
     var tab by rememberSaveable { mutableStateOf(Tab.TRIPS) }
     var trip by remember { mutableStateOf<TripRow?>(null) }
     var requestLog by rememberSaveable { mutableStateOf(false) }
+    val saved = rememberSaveableStateHolder()
     // Opened from a notification: to your trip, or to the trips instead of it.
     LaunchedEffect(st.jumps) {
         if (st.jumps == 0) return@LaunchedEffect
@@ -78,13 +80,21 @@ fun MainScreen(vm: MainViewModel) {
         },
     ) { pad ->
         Box(Modifier.padding(pad).consumeWindowInsets(pad)) {
-            when (current) {
-                Tab.TRIPS -> trip?.let { TripScreen(vm, st, it, onBack = { trip = null }) }
-                    ?: CommuteScreen(vm, st, onTrip = { trip = it }, onMyTrip = { tab = Tab.MY_TRIP })
-                Tab.MY_TRIP -> MyTripScreen(vm, st)
-                Tab.RATINGS -> RatingsScreen(vm, st)
-                Tab.SETTINGS -> if (requestLog) DebugScreen(vm, st, onBack = { requestLog = false })
-                    else SettingsScreen(vm, st, onDone = { tab = Tab.TRIPS }, onRequestLog = { requestLog = true })
+            // Each screen keeps its scroll position while you are elsewhere (a trip per trip).
+            val screen = when {
+                current == Tab.TRIPS && trip != null -> "trip:${trip!!.trip.serviceDate}:${trip!!.trip.key}"
+                current == Tab.SETTINGS && requestLog -> "log"
+                else -> current.name
+            }
+            saved.SaveableStateProvider(screen) {
+                when (current) {
+                    Tab.TRIPS -> trip?.let { TripScreen(vm, st, it, onBack = { trip = null }) }
+                        ?: CommuteScreen(vm, st, onTrip = { trip = it }, onMyTrip = { tab = Tab.MY_TRIP })
+                    Tab.MY_TRIP -> MyTripScreen(vm, st)
+                    Tab.RATINGS -> RatingsScreen(vm, st)
+                    Tab.SETTINGS -> if (requestLog) DebugScreen(vm, st, onBack = { requestLog = false })
+                        else SettingsScreen(vm, st, onDone = { tab = Tab.TRIPS }, onRequestLog = { requestLog = true })
+                }
             }
         }
     }

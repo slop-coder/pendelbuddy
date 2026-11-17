@@ -1,6 +1,9 @@
 package io.github.slop_coder.pendelbuddy.ui
 
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -281,7 +284,7 @@ private fun TripItem(row: TripRow, cls: TravelClass, now: Long, durationColor: C
         Spacer(Modifier.size(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Trains(t, cls, Modifier.weight(1f))
-            t.platform?.let { Text("Pl. $it", style = MaterialTheme.typography.titleMedium) }
+            Platform(t.platform, t.trains.firstOrNull()?.plannedPlatform)
         }
         for (p in t.trains.mapNotNull { it.problem }) {
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -332,6 +335,21 @@ private fun Trains(t: Trip, cls: TravelClass, modifier: Modifier = Modifier) {
     }
 }
 
+/** "Pl. 7"; after a change the old platform crossed out and the new one in red. */
+@Composable
+fun Platform(platform: String?, planned: String?) {
+    platform ?: return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (planned != null && planned != platform) {
+            Text("Pl. $planned", style = MaterialTheme.typography.bodyMedium, textDecoration = TextDecoration.LineThrough)
+            Spacer(Modifier.width(4.dp))
+            Text(platform, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+        } else {
+            Text("Pl. $platform", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
 /**
  * The line, colored by the occupancy forecast stretch by stretch: left is where you get on (will you find a seat?),
  * right where you get off, each part as long as that stretch takes.
@@ -342,7 +360,15 @@ fun LineBadge(leg: Leg, cls: TravelClass) {
     val (_, fg) = occupancyColors(spans.firstOrNull()?.first)
     val colors = spans.map { occupancyColors(it.first).first to it.second.toFloat() }
     Surface(color = Color.Transparent, contentColor = fg, shape = RoundedCornerShape(6.dp)) {
-        Box(Modifier.height(IntrinsicSize.Min).width(IntrinsicSize.Max)) {
+        // Cancelled: a thick line across, easier to see than the font's own strike-through.
+        val strike = Modifier.drawWithContent {
+            drawContent()
+            if (leg.cancelled) {
+                val y = size.height / 2
+                drawLine(fg, Offset(3.dp.toPx(), y), Offset(size.width - 3.dp.toPx(), y), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+            }
+        }
+        Box(Modifier.height(IntrinsicSize.Min).width(IntrinsicSize.Max).then(strike)) {
             Row(Modifier.matchParentSize()) {
                 for ((c, w) in colors) Box(Modifier.weight(w).fillMaxHeight().background(c))
             }
@@ -354,7 +380,6 @@ fun LineBadge(leg: Leg, cls: TravelClass) {
                     shadow = if (colors.size > 1) Shadow(if (fg == Color.White) Color.Black else Color.White, blurRadius = 3f) else null,
                 ),
                 fontWeight = FontWeight.Bold,
-                textDecoration = if (leg.cancelled) TextDecoration.LineThrough else null,
             )
         }
     }

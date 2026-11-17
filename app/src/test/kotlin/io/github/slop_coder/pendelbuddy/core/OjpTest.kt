@@ -27,6 +27,8 @@ class OjpTest {
         assertEquals(2, t.departureDelay)
         assertEquals(5, t.arrivalDelay)
         assertEquals("5", t.platform)
+        // Moved from platform 4: the planned one is kept to show the change.
+        assertEquals("4", t.legs[0].plannedPlatform)
         assertEquals(1, t.transfers)
         assertEquals(listOf("IC 8", "IR 16"), t.products)
         val ic = t.legs[0]

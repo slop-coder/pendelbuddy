@@ -245,7 +245,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
                 }
             }
             Spacer(Modifier.size(8.dp))
-            Stop(leg.departure, leg.departureDelay, leg.fromName, leg.platform)
+            Stop(leg.departure, leg.departureDelay, leg.fromName, leg.platform, leg.plannedPlatform)
             if (earlier.isNotEmpty()) {
                 // Leaving earlier for safety or to buy food: the same line's departures before this one.
                 Text(
@@ -255,7 +255,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
                     modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
                 )
             }
-            Stop(leg.arrival, leg.arrivalDelay, leg.toName, leg.arrivalPlatform)
+            Stop(leg.arrival, leg.arrivalDelay, leg.toName, leg.arrivalPlatform, leg.plannedArrivalPlatform)
             Spacer(Modifier.size(8.dp))
             Forecast(leg, cls)
             vm.averageFor(leg)?.let {
@@ -285,7 +285,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
 
 /** Time (crossed out and corrected when late), station and platform. */
 @Composable
-private fun Stop(time: Long, delay: Int?, station: String, platform: String?) {
+private fun Stop(time: Long, delay: Int?, station: String, platform: String?, planned: String?) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         val late = (delay ?: 0) > 0
         Text(hm(time), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
@@ -296,7 +296,7 @@ private fun Stop(time: Long, delay: Int?, station: String, platform: String?) {
         }
         Spacer(Modifier.width(12.dp))
         Text(station, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        platform?.let { Text("Pl. $it", style = MaterialTheme.typography.titleMedium) }
+        Platform(platform, planned)
     }
 }
 

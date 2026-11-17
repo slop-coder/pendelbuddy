@@ -123,6 +123,7 @@ object Ojp {
             plannedPlatform = board.child("PlannedQuay")?.text(),
             arrivalDelay = delay(arr),
             arrivalPlatform = quay(alight),
+            plannedArrivalPlatform = alight.child("PlannedQuay")?.text(),
             // The fullest stretch counts: will there be a seat the whole way?
             capacity = Capacity.worst(calls.map { it.capacity }),
             trainNumber = service?.child("TrainNumber")?.textContent?.trim()?.trimStart('0')?.takeIf { it.isNotEmpty() },

@@ -104,6 +104,7 @@ data class Leg(
     val plannedPlatform: String? = null,
     val arrivalDelay: Int? = null,
     val arrivalPlatform: String? = null,
+    val plannedArrivalPlatform: String? = null,
     val capacity: Capacity = Capacity(),
     /** Train number without leading zeros, e.g. "10809"; kept with ratings. */
     val trainNumber: String? = null,
