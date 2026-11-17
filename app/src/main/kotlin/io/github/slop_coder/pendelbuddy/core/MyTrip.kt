@@ -15,6 +15,8 @@ data class MyTrip(
     /** When [trip] was last downloaded, epoch seconds. */
     val fetchedAt: Long,
     val found: Boolean = true,
+    /** [Change.key]s already announced, so each change is notified once. */
+    val alerted: Set<String> = emptySet(),
 ) {
     val route get() = Route(from, to, direction)
 

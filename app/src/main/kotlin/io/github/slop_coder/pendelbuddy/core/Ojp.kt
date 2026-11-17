@@ -120,18 +120,22 @@ object Ojp {
             arrival = time(arr.child("TimetabledTime")) ?: return null,
             departureDelay = delay(dep),
             platform = quay(board),
+            plannedPlatform = board.child("PlannedQuay")?.text(),
             arrivalDelay = delay(arr),
             arrivalPlatform = quay(alight),
             // The fullest stretch counts: will there be a seat the whole way?
             capacity = Capacity.worst(calls.map { it.capacity }),
             trainNumber = service?.child("TrainNumber")?.textContent?.trim()?.trimStart('0')?.takeIf { it.isNotEmpty() },
-            cancelled = service?.child("Cancelled")?.textContent?.trim() == "true" ||
-                listOf(board, alight).any { it.child("NotServicedStop")?.textContent?.trim() == "true" },
+            cancelled = service?.child("Cancelled")?.textContent?.trim() == "true" || skipped(board) || skipped(alight),
+            boardSkipped = skipped(board),
+            alightSkipped = skipped(alight),
             calls = calls,
             journeyRef = service?.child("JourneyRef")?.textContent?.trim()?.takeIf { it.isNotEmpty() },
             operatingDay = service?.child("OperatingDayRef")?.textContent?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
+
+    private fun skipped(stop: Element) = stop.child("NotServicedStop")?.textContent?.trim() == "true"
 
     private fun occupancy(stop: Element): Capacity {
         val byClass = stop.children("ExpectedDepartureOccupancy").associate { o ->

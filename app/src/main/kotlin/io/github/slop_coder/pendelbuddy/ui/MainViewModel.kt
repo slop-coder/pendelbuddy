@@ -5,8 +5,8 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.slop_coder.pendelbuddy.BuildConfig
 import io.github.slop_coder.pendelbuddy.core.Average
+import io.github.slop_coder.pendelbuddy.core.Change
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
 import io.github.slop_coder.pendelbuddy.core.Forecast
@@ -30,18 +30,15 @@ import io.github.slop_coder.pendelbuddy.core.merge
 import io.github.slop_coder.pendelbuddy.core.project
 import io.github.slop_coder.pendelbuddy.core.toSwiss
 import io.github.slop_coder.pendelbuddy.core.upcoming
-import io.github.slop_coder.pendelbuddy.data.HttpException
-import io.github.slop_coder.pendelbuddy.data.OjpClient
-import io.github.slop_coder.pendelbuddy.data.Secrets
-import io.github.slop_coder.pendelbuddy.data.Store
+import io.github.slop_coder.pendelbuddy.data.Alerts
+import io.github.slop_coder.pendelbuddy.data.Backend
+import io.github.slop_coder.pendelbuddy.data.TripWatch
 import io.github.slop_coder.pendelbuddy.data.TransportClient
 import io.github.slop_coder.pendelbuddy.data.WeatherClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -99,13 +96,19 @@ data class CommuteState(
     /** The trip you take ("I take this"), as last downloaded. */
     val myTrip: MyTrip? = null,
     val myTripLoading: Boolean = false,
+    /** What changed on your trip, for the banner above the trips and the My trip tab. */
+    val changes: List<Change> = emptyList(),
+    /** Opening the app from a notification switches to this tab ("trips" or "my-trip"); [jumps] counts the jumps. */
+    val jumpTo: String? = null,
+    val jumps: Int = 0,
 ) {
     fun isMyTrip(t: Trip) = myTrip?.trip?.let { it.key == t.key && it.serviceDate == t.serviceDate } == true
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
-    private val store = Store(app)
-    private val secrets = Secrets(app)
+    private val backend = Backend.get(app)
+    private val store = backend.store
+    private val secrets = backend.secrets
 
     private val _state = MutableStateFlow(CommuteState())
     val state: StateFlow<CommuteState> = _state
@@ -116,28 +119,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var directionOverride: Pair<Direction, Direction>? = null
     private var ratings: List<Rating> = emptyList()
     private var forecasts: Map<String, Forecast> = emptyMap()
-    private var debugLog: List<DebugEntry> = emptyList()
-    private val logLock = Mutex()
     /** Routes downloaded since the app was last opened; a route is only fetched again on reopening or pull-to-refresh. */
     private val fetchedThisVisit = mutableSetOf<String>()
     private val lastFetch = mutableMapOf<String, Long>()
-    private val fetchLock = Mutex()
+    private val fetchLock = backend.fetchLock
     /** Background prefetches run one after another, so they never compete with what you tapped. */
     private val prefetchLock = Mutex()
     private var ticker: Job? = null
     private var searchJob: Job? = null
 
     init {
-        if (BuildConfig.DEBUG) OjpClient.debugDump = File(app.filesDir, "ojp-last.xml")
+        viewModelScope.launch { backend.debugLog.collect { l -> _state.update { it.copy(debugLog = l) } } }
+        viewModelScope.launch { backend.source.collect { s -> _state.update { it.copy(source = s.name, ojpProblem = s.ojpProblem) } } }
+        viewModelScope.launch { backend.myTripLoading.collect { l -> _state.update { it.copy(myTripLoading = l) } } }
+        viewModelScope.launch {
+            backend.myTrip.collect { m -> _state.update { it.copy(myTrip = m, changes = backend.changes()) } }
+        }
         viewModelScope.launch {
             store.dropOldFiles()
             ratings = store.ratings()
             forecasts = store.forecasts()
-            debugLog = store.debugLog()
-            val mine = store.myTrip()?.takeIf { !it.over(nowSec()) }
-            _state.update { it.copy(debugLog = debugLog) }
+            backend.load()
             val keySet = withContext(Dispatchers.IO) { secrets.hasOjpKey() }
-            _state.update { it.copy(settings = store.settings(), loaded = true, ojpKeySet = keySet, myTrip = mine) }
+            _state.update { it.copy(settings = store.settings(), loaded = true, ojpKeySet = keySet) }
             updateRatingStats()
             openedApp()
         }
@@ -149,6 +153,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             // What is on screen first, then the weather and the commute in the background.
             refresh(cause = "Opened app")
+            backend.myTrip.value?.let { TripWatch.schedule(getApplication(), it) }
             refreshMyTrip(cause = "Opened app")
             updateWeather(force = true, cause = "Opened app")
             val today = nowSec().toSwiss().toLocalDate()
@@ -217,7 +222,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { secrets.setOjpKey(key) }
             val set = withContext(Dispatchers.IO) { secrets.hasOjpKey() }
-            _state.update { it.copy(ojpKeySet = set, ojpProblem = null, source = null) }
+            backend.clearSourceProblem()
+            _state.update { it.copy(ojpKeySet = set) }
             refresh(force = true, cause = "Key saved")
         }
     }
@@ -274,52 +280,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun takeTrip(row: TripRow) {
         val route = _state.value.route ?: return
         val mine = MyTrip(row.trip, route.from, route.to, route.direction, fetchedAt = _state.value.liveAt ?: 0)
-        _state.update { it.copy(myTrip = mine) }
         viewModelScope.launch {
-            store.saveMyTrip(mine)
+            backend.takeTrip(mine)
             refreshMyTrip(cause = "Took trip")
         }
     }
 
     fun dropTrip() {
-        _state.update { it.copy(myTrip = null) }
-        viewModelScope.launch { store.saveMyTrip(null) }
+        viewModelScope.launch { backend.dropTrip() }
     }
 
     fun pullToRefreshMyTrip() {
         viewModelScope.launch { refreshMyTrip(cause = "Pull to refresh") }
     }
 
-    /**
-     * Asks for your trip again: the same route from shortly before it leaves, and the same trains picked out of
-     * the answer. [onlyIfDue]: only when the last download is 5 minutes old and the trip is close or under way.
-     */
     private suspend fun refreshMyTrip(cause: String, onlyIfDue: Boolean = false) {
-        val now = nowSec()
-        val mine = _state.value.myTrip ?: return
-        if (mine.over(now)) return dropTrip()
-        if (onlyIfDue && !mine.dueForRefresh(now)) return
-        if (mine.arrived(now)) return
-        _state.update { it.copy(myTripLoading = true) }
-        try {
-            val fresh = fetchLock.withLock { plan(mine.route, mine.trip.departure - LOOK_BACK, limit = 4, "$cause, my trip") }
-            store.saveRoute(store.route(mine.from.id, mine.to.id).merge(fresh, now))
-            val found = mine.findIn(fresh)
-            // Not in the answer: keep showing the last known version, marked as missing.
-            val updated = mine.copy(trip = found ?: mine.trip, fetchedAt = now, found = found != null)
-            // Dropped or replaced while downloading: keep what you chose.
-            if (_state.value.myTrip?.trip?.key != mine.trip.key) return
-            _state.update { it.copy(myTrip = updated) }
-            store.saveMyTrip(updated)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Offline: the My trip tab shows how old the data is.
-            Log.w(TAG, "My trip download failed", e)
-        } finally {
-            _state.update { it.copy(myTripLoading = false) }
-        }
+        backend.refreshMyTrip(cause, onlyIfDue)
         render()
+    }
+
+    /**
+     * Opened from a notification: [Alerts.OPEN_MY_TRIP] shows your trip; [Alerts.OPEN_ALTERNATIVES] the trips from
+     * where and when your trip changed, towards where it goes.
+     */
+    fun openFromNotification(what: String?, station: Station?, at: Long?) {
+        when (what) {
+            Alerts.OPEN_MY_TRIP -> _state.update { it.copy(jumpTo = Alerts.OPEN_MY_TRIP, jumps = it.jumps + 1) }
+            Alerts.OPEN_ALTERNATIVES -> if (station != null && at != null) showAlternatives(station, at)
+        }
+    }
+
+    /** Other trips from [station] at [at], in the direction of your trip. */
+    fun showAlternatives(station: Station, at: Long) {
+        val mine = _state.value.myTrip
+        val z = at.toSwiss()
+        val today = nowSec().toSwiss().toLocalDate()
+        _state.update {
+            it.copy(
+                day = z.toLocalDate().takeIf { d -> d != today },
+                time = z.toLocalTime().withSecond(0).withNano(0),
+                jumpTo = "trips",
+                jumps = it.jumps + 1,
+            )
+        }
+        // After the time is set, so the direction holds for that half of the day.
+        mine?.let { overrideDirection(it.direction) }
+        _state.update { it.copy(current = station) }
+        viewModelScope.launch { refresh(cause = "Alternatives") }
     }
 
     /** Saves a rating of [leg] together with the forecast it showed; earlier ratings are kept for analysis. */
@@ -376,37 +383,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Runs a network request and notes it in the debug log, with how long it took and what came back. */
-    private suspend fun <T> logged(kind: String, what: String, cause: String, request: suspend () -> T, result: (T) -> String): T {
-        val start = System.currentTimeMillis()
-        fun entry(r: String) = DebugEntry(start, kind, what, cause, r, System.currentTimeMillis() - start)
-        try {
-            return request().also { addLog(entry(result(it))) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: HttpException) {
-            addLog(entry("HTTP ${e.code}"))
-            throw e
-        } catch (e: Exception) {
-            addLog(entry(e.javaClass.simpleName + (e.message?.let { ": ${it.take(80)}" } ?: "")))
-            throw e
-        }
-    }
-
-    private suspend fun addLog(e: DebugEntry) = logLock.withLock {
-        debugLog = (listOf(e) + debugLog).take(DebugEntry.KEEP)
-        _state.update { it.copy(debugLog = debugLog) }
-        store.saveDebugLog(debugLog)
-    }
+    private suspend fun <T> logged(kind: String, what: String, cause: String, request: suspend () -> T, result: (T) -> String): T =
+        backend.logged(kind, what, cause, request, result)
 
     fun clearDebugLog() {
-        viewModelScope.launch {
-            logLock.withLock {
-                debugLog = emptyList()
-                _state.update { it.copy(debugLog = debugLog) }
-                store.saveDebugLog(debugLog)
-            }
-        }
+        viewModelScope.launch { backend.clearDebugLog() }
     }
 
     fun searchStations(query: String) {
@@ -538,49 +519,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return all
     }
 
-    /**
-     * Trips for [r] from [at] on. With a safety margin on the way, planned in two parts so that trips with a
-     * longer change (which a planner never suggests on its own) are found.
-     */
-    private suspend fun plan(r: Route, at: Long, limit: Int, cause: String): List<Trip> {
-        val s = _state.value.settings
-        val b = Commute.bufferFor(s, r) ?: return connections(r.from, r.to, at, limit, s.maxChanges, cause)
-        val first = connections(r.from, b.station, at, limit, null, "$cause (margin, part 1)")
-        // Kept on their own: every bus to the margin station, for the "Also at" times in the trip screen.
-        store.saveRoute(store.route(r.from.id, b.station.id).merge(first, nowSec()))
-        val earliest = first.minOfOrNull { it.expectedArrival() } ?: return emptyList()
-        val second = connections(b.station, r.to, earliest + b.minutes * 60L, 16, null, "$cause (margin, part 2)")
-        return Commute.joinAtBuffer(first, second, b)
-    }
-
-    /** OJP 2.0 when a key is saved, else (or when OJP fails) transport.opendata.ch. */
-    private suspend fun connections(from: Station, to: Station, at: Long, limit: Int, maxChanges: Int?, cause: String): List<Trip> {
-        val key = withContext(Dispatchers.IO) { secrets.ojpKey() }
-        val what = "${from.name} → ${to.name}, ${day(at.toSwiss().toLocalDate())} ${hm(at)}"
-        if (key != null) {
-            try {
-                val trips = logged("OJP", what, cause, { OjpClient.connections(key, from, to, at, limit, maxChanges) }) { "${it.size} trips" }
-                _state.update { it.copy(source = "OJP 2.0", ojpProblem = null) }
-                return trips
-            } catch (e: HttpException) {
-                // Only the status code is shown or logged, never the request headers.
-                Log.w(TAG, "OJP failed: HTTP ${e.code}")
-                _state.update {
-                    it.copy(ojpProblem = if (e.code == 401 || e.code == 403) "OJP key rejected (HTTP ${e.code})" else "OJP error (HTTP ${e.code})")
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: IOException) {
-                throw e // offline: transport.opendata.ch will not work either
-            } catch (e: Exception) {
-                Log.w(TAG, "OJP answer not understood", e)
-                _state.update { it.copy(ojpProblem = "OJP answer not understood: ${e.message?.take(120)}") }
-            }
-        }
-        return logged("transport.opendata.ch", what, cause, { TransportClient.connections(from.id, to.id, at, limit) }) { "${it.size} trips" }.also {
-            _state.update { s -> s.copy(source = "transport.opendata.ch") }
-        }
-    }
+    private suspend fun plan(r: Route, at: Long, limit: Int, cause: String): List<Trip> =
+        backend.plan(_state.value.settings, r, at, limit, cause)
 
     /**
      * Weather for home and work (one request each covers 5 days), on the same schedule as the trips: on opening
@@ -640,6 +580,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 route = route,
                 rows = rows,
                 weather = weather,
+                changes = backend.changes(now),
                 liveAt = lastFetch[fetchKey(route)],
                 now = now,
                 at = at,

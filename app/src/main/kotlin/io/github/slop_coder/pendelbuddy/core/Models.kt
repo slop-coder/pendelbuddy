@@ -100,12 +100,17 @@ data class Leg(
     val arrival: Long,
     val departureDelay: Int? = null,
     val platform: String? = null,
+    /** The platform in the timetable, when the answer says so; differs from [platform] after a change. */
+    val plannedPlatform: String? = null,
     val arrivalDelay: Int? = null,
     val arrivalPlatform: String? = null,
     val capacity: Capacity = Capacity(),
     /** Train number without leading zeros, e.g. "10809"; kept with ratings. */
     val trainNumber: String? = null,
+    /** The whole run is cancelled, or it skips your boarding or exit stop (see [boardSkipped], [alightSkipped]). */
     val cancelled: Boolean = false,
+    val boardSkipped: Boolean = false,
+    val alightSkipped: Boolean = false,
     /** Boarding stop and stops in between, each with the occupancy when leaving it; [capacity] is their worst. */
     val calls: List<Call> = emptyList(),
     /** OJP's id of this run of the train and its operating day (yyyy-mm-dd), to find it again in a later answer. */

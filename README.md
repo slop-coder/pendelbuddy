@@ -12,7 +12,10 @@ home in the afternoon: leave time, arrival, changes, platform, delays and how fu
   to see the trips from there. Picking the destination plans the trip back.
 - **My trip**: tap "I take this" on a trip to follow it in its own tab. It is downloaded again every 5 minutes
   while the app is open (from 10 minutes before leaving until you arrive) or when you pull down, and says how old the
-  data is.
+  data is. From 10 minutes before departure it is also watched with the app closed (ongoing notification), and you
+  get a notification when it changes in a way that matters: 10+ minutes late, a new platform where you get on, a
+  cancelled train, a train not stopping where you get on or off, a connection you can no longer make. "Alternatives"
+  shows the trips from where and when that happens.
 - **Fullness**: the occupancy forecast for your class (1st/2nd) where the timetable has one, plus your own ratings:
   tap a trip and rate a train from 10% (almost empty) to 110% (no seats, many standing). Your average for that train on
   the same kind of day is shown on later trips.

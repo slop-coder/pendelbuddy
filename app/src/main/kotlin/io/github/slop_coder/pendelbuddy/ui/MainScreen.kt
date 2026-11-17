@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import io.github.slop_coder.pendelbuddy.data.Alerts
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     TRIPS("Trips", Icons.Filled.Train),
@@ -40,6 +42,13 @@ fun MainScreen(vm: MainViewModel) {
     var tab by rememberSaveable { mutableStateOf(Tab.TRIPS) }
     var trip by remember { mutableStateOf<TripRow?>(null) }
     var requestLog by rememberSaveable { mutableStateOf(false) }
+    // Opened from a notification: to your trip, or to the trips instead of it.
+    LaunchedEffect(st.jumps) {
+        if (st.jumps == 0) return@LaunchedEffect
+        tab = if (st.jumpTo == Alerts.OPEN_MY_TRIP) Tab.MY_TRIP else Tab.TRIPS
+        trip = null
+        requestLog = false
+    }
     if (!st.loaded) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
@@ -72,7 +81,7 @@ fun MainScreen(vm: MainViewModel) {
     ) { pad ->
         Box(Modifier.padding(pad).consumeWindowInsets(pad)) {
             when (current) {
-                Tab.TRIPS -> CommuteScreen(vm, st, onTrip = { trip = it })
+                Tab.TRIPS -> CommuteScreen(vm, st, onTrip = { trip = it }, onMyTrip = { tab = Tab.MY_TRIP })
                 Tab.MY_TRIP -> MyTripScreen(vm, st)
                 Tab.RATINGS -> RatingsScreen(vm, st)
                 Tab.SETTINGS -> SettingsScreen(vm, st, onDone = { tab = Tab.TRIPS }, onRequestLog = { requestLog = true })

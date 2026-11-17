@@ -1,6 +1,10 @@
 package io.github.slop_coder.pendelbuddy.ui
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +72,11 @@ fun TripScreen(vm: MainViewModel, st: CommuteState, row: TripRow, onBack: () -> 
     BackHandler(onBack = onBack)
     val live = st.rows.firstOrNull { it.trip.key == row.trip.key && it.trip.serviceDate == row.trip.serviceDate } ?: row
     val t = live.trip
+    // Alerts need the notification permission (Android 13+); the trip is taken either way.
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.takeTrip(live) }
+    fun take() {
+        if (Build.VERSION.SDK_INT >= 33) ask.launch(Manifest.permission.POST_NOTIFICATIONS) else vm.takeTrip(live)
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -89,7 +98,7 @@ fun TripScreen(vm: MainViewModel, st: CommuteState, row: TripRow, onBack: () -> 
                     Text("Your trip · stop watching")
                 }
             } else {
-                FilledTonalButton(onClick = { vm.takeTrip(live) }, modifier = Modifier.padding(horizontal = 4.dp)) {
+                FilledTonalButton(onClick = ::take, modifier = Modifier.padding(horizontal = 4.dp)) {
                     Icon(Icons.Filled.ConfirmationNumber, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(if (st.myTrip == null) "I take this" else "I take this instead")

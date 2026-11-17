@@ -79,7 +79,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommuteScreen(vm: MainViewModel, st: CommuteState, onTrip: (TripRow) -> Unit) {
+fun CommuteScreen(vm: MainViewModel, st: CommuteState, onTrip: (TripRow) -> Unit, onMyTrip: () -> Unit) {
     var searching by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
 
@@ -128,6 +128,9 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onTrip: (TripRow) -> Unit
         ) {
             LazyColumn(Modifier.fillMaxSize()) {
                 item { RouteHeader(st, onFlip = vm::flipDirection) }
+                if (st.myTrip != null && st.changes.isNotEmpty()) {
+                    item { ChangesCard(st.changes, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), onAlternatives = vm::showAlternatives, onMyTrip = onMyTrip) }
+                }
                 if (st.weather.isNotEmpty()) item { WeatherCard(st.weather, st.now, st.at) }
                 if (st.rows.isEmpty() && !st.loading) {
                     item {
@@ -141,7 +144,7 @@ fun CommuteScreen(vm: MainViewModel, st: CommuteState, onTrip: (TripRow) -> Unit
                 }
                 val durations = st.rows.filter { !it.trip.cancelled }.map { it.trip.expectedArrival() - it.trip.expectedDeparture() }
                 items(st.rows) { row ->
-                    TripItem(row, st.settings.travelClass, st.now, durationColor(row.trip, durations), onClick = { onTrip(row) })
+                    TripItem(row, st.settings.travelClass, st.now, durationColor(row.trip, durations), mine = st.isMyTrip(row.trip), onClick = { onTrip(row) })
                     HorizontalDivider()
                 }
             }
@@ -248,7 +251,7 @@ private fun durationColor(t: Trip, all: List<Long>): Color? {
 }
 
 @Composable
-private fun TripItem(row: TripRow, cls: TravelClass, now: Long, durationColor: Color?, onClick: () -> Unit) {
+private fun TripItem(row: TripRow, cls: TravelClass, now: Long, durationColor: Color?, mine: Boolean, onClick: () -> Unit) {
     val t = row.trip
     // Shown for a few minutes after it left (in case it is late); dimmed once it should be gone.
     val gone = t.expectedDeparture() < now
@@ -272,6 +275,7 @@ private fun TripItem(row: TripRow, cls: TravelClass, now: Long, durationColor: C
             t.platform?.let { Text("Pl. $it", style = MaterialTheme.typography.titleMedium) }
         }
         if (t.cancelled) Text("Cancelled", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+        if (mine) Text("Your trip", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         Mine(row)
     }
 }

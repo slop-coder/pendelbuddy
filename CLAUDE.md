@@ -46,14 +46,14 @@ Public repo, Unlicense. What the app does is in `README.md`.
 
 ### Planned (2026-11-17)
 
-- Bottom tabs: Trips · My trip · Ratings · Settings. The request log (Debug) is opened from Settings.
-- "I take this" on the trip view puts the trip in **My trip**: pull to refresh, every 5 min while the app is in
-  the foreground, and how old the data is.
-- In the background a foreground service watches that trip from at most 10 min before departure until arrival.
-- Notify only on material changes: 10+ min delay, platform change where the user boards, a cancelled train, the
-  train not serving the user's boarding or exit stop or ending before it, a broken connection. Not for skipped
-  stops where the user neither boards nor alights. The notification leads to the trip list with "I'm at" and the
-  time set to where and when the problem is.
+- Done: bottom tabs Trips · My trip · Ratings · Settings, the request log opened from Settings. "I take this" puts
+  a trip in **My trip**: pull to refresh, every 5 min from at most 10 min before departure until arrival, data
+  age shown. An exact alarm starts `TripWatchService` (foreground, dataSync) 10 min before; it keeps checking with
+  the app closed. `Backend` is the one place that downloads, shared by the view model and the service.
+- Done: notify only on material changes (`core/Changes.kt`): 10+ min delay, platform change where the user boards,
+  a cancelled train, the train not serving the user's boarding or exit stop, a broken connection, the trip gone
+  from the answer. Not for skipped stops where the user neither boards nor alights. Each change is notified once.
+  "Alternatives" sets "I'm at" and the time to where and when the problem is.
 - Cancelled trips stand out in the list.
 - Ratings are tied to a stop (picked from the clock and the delay, changeable); badges are split into stretches.
 - Train map from the formation service: wagons, 1st class, sectors A–F at the user's platform; the sector is
