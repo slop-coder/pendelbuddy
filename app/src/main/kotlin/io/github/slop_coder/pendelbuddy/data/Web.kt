@@ -23,7 +23,9 @@ class HttpException(val code: Int, url: String, val reason: String? = null) : IO
 
 /** The "error" or "message" of a JSON error answer, or its first line; short. */
 private fun HttpURLConnection.reason(): String? = runCatching {
-    val body = errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText().take(2000) } ?: return null
+    val raw = errorStream ?: return null
+    val stream = if (contentEncoding.equals("gzip", ignoreCase = true)) GZIPInputStream(raw) else raw
+    val body = stream.bufferedReader(Charsets.UTF_8).use { it.readText().take(2000) }
     (Regex(""""(?:error|message)"\s*:\s*"([^"]*)"""").find(body)?.groupValues?.get(1) ?: body.lineSequence().firstOrNull())
         ?.trim()?.take(100)?.takeIf { it.isNotEmpty() }
 }.getOrNull()

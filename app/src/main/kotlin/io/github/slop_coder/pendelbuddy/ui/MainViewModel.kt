@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -333,7 +334,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** "I take this": [row] becomes your trip, watched until you arrive. */
     fun takeTrip(row: TripRow) {
         val route = _state.value.route ?: return
-        val mine = MyTrip(row.trip, route.from, route.to, route.direction, fetchedAt = _state.value.liveAt ?: 0)
+        val mine = MyTrip(row.trip, route.from, route.to, route.direction, fetchedAt = row.fetchedAt)
         viewModelScope.launch {
             backend.takeTrip(mine)
             refreshMyTrip(cause = "Took trip")
@@ -384,9 +385,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * where and when your trip changed, towards where it goes.
      */
     fun openFromNotification(what: String?, station: Station?, at: Long?) {
-        when (what) {
-            Alerts.OPEN_MY_TRIP -> _state.update { it.copy(jumpTo = Alerts.OPEN_MY_TRIP, jumps = it.jumps + 1) }
-            Alerts.OPEN_ALTERNATIVES -> if (station != null && at != null) showAlternatives(station, at)
+        viewModelScope.launch {
+            // Opened with the app closed: your trip and settings first, so the direction is right.
+            _state.first { it.loaded }
+            when (what) {
+                Alerts.OPEN_MY_TRIP -> _state.update { it.copy(jumpTo = Alerts.OPEN_MY_TRIP, jumps = it.jumps + 1) }
+                Alerts.OPEN_ALTERNATIVES -> if (station != null && at != null) showAlternatives(station, at)
+            }
         }
     }
 

@@ -93,7 +93,8 @@ class TripWatchService : Service() {
         while (true) {
             val mine = backend.myTrip.value ?: break
             val now = System.currentTimeMillis() / 1000
-            if (mine.arrived(now)) break
+            // Arrived, or another trip taken that starts later: its alarm starts the watch again.
+            if (mine.arrived(now) || now < mine.trip.departure - MyTrip.WATCH_BEFORE) break
             // The CPU stays awake only until the expected arrival (plus a little), never for hours.
             keepAwake((mine.trip.expectedArrival() - now + 10 * 60).coerceIn(60, 3 * 3600) * 1000)
             backend.refreshMyTrip("Watching", onlyIfDue = true)

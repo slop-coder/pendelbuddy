@@ -64,12 +64,14 @@ object Changes {
         var n = 0
         for (leg in t.legs) {
             if (leg.walk) {
-                walk += leg.arrival - leg.departure
+                // A safety margin (same station at both ends) is time to spare, not time needed to change.
+                val margin = leg.fromId.isNotEmpty() && leg.fromId == leg.toId
+                if (!margin) walk += leg.arrival - leg.departure
                 continue
             }
             val a = prev
             val gap = a?.let { leg.expectedDeparture() - it.expectedArrival() }
-            if (a != null && gap != null && !leg.cancelled && gap < walk) {
+            if (a != null && gap != null && !leg.cancelled && (gap < walk || gap < 0)) {
                 val times = "${a.line} arrives ${hm(a.expectedArrival())}, ${leg.line} leaves ${hm(leg.expectedDeparture())}"
                 out += if (gap < walk / 2) {
                     Change("connection:$n", "Connection at ${a.toName} lost: $times", Station(a.toId, a.toName), a.expectedArrival())

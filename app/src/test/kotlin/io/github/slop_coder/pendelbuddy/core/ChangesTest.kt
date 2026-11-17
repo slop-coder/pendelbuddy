@@ -119,6 +119,17 @@ class ChangesTest {
     }
 
     @Test
+    fun safetyMarginIsNotChangeTime() {
+        // With a margin at Musterdorf: IC 8 arrives 08:02, wait until the 08:22 S 3 (20 min to spare).
+        val margin = Leg(null, fromId = "8599002", fromName = "Musterdorf", toId = "8599002", toName = "Musterdorf", departure = at(8, 2), arrival = at(8, 22))
+        val s3 = s3().copy(departure = at(8, 22), arrival = at(8, 52))
+        // 15 min late still leaves 5 min: nothing to report.
+        assertEquals(emptyList<String>(), keys(mine(ic(arrDelay = 15), margin, s3)))
+        // 25 min late: the S 3 has left.
+        assertEquals(listOf("connection:1"), keys(mine(ic(arrDelay = 25), margin, s3)).filter { it.startsWith("connection") })
+    }
+
+    @Test
     fun goneFromTheTimetable() {
         val c = Changes.of(mine(ic(), change, s3(), found = false), at(7, 20))
         assertEquals(listOf("gone"), c.map { it.key })
