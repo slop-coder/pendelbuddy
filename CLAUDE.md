@@ -69,6 +69,9 @@ Public repo, Unlicense. What the app does is in `README.md`.
   from OJP's: each API has its own token). Parsed from the per-stop `formationShortString` (the vehicle list
   overlaps between formation blocks); see `core/Formation.kt` for the syntax. Fetched when a train card is shown,
   kept 30 min; the tapped sector is saved with ratings.
+- Keys: one "Enter key" in Settings. The key is tried with OJP (one trip) and the formation service (a train
+  number that does not exist) and saved for each API that accepts it; a key saved for an API that refuses it is
+  removed. After a 401/403 the OJP key is not tried again until a key is entered or removed.
 
 ## Build and test
 

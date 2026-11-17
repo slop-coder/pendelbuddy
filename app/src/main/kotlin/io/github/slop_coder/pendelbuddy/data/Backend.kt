@@ -109,7 +109,13 @@ class Backend private constructor(context: Context) {
         store.saveDebugLog(emptyList())
     }
 
-    fun clearSourceProblem() = _source.update { Source() }
+    /** The saved OJP key was refused; reset when a key is entered or removed. */
+    @Volatile private var ojpRejected = false
+
+    fun clearSourceProblem() {
+        ojpRejected = false
+        _source.update { Source() }
+    }
 
     /**
      * Trips for [r] from [at] on. With a safety margin on the way, planned in two parts so that trips with a
@@ -127,7 +133,8 @@ class Backend private constructor(context: Context) {
 
     /** OJP 2.0 when a key is saved, else (or when OJP fails) transport.opendata.ch. */
     private suspend fun connections(from: Station, to: Station, at: Long, limit: Int, maxChanges: Int?, cause: String): List<Trip> {
-        val key = withContext(Dispatchers.IO) { secrets.ojpKey() }
+        // Once rejected, the key is not tried again until a new one is entered: every request would fail twice.
+        val key = if (ojpRejected) null else withContext(Dispatchers.IO) { secrets.ojpKey() }
         val what = "${from.name} → ${to.name}, ${at.toSwiss().format(WHEN)}"
         if (key != null) {
             try {
@@ -137,6 +144,7 @@ class Backend private constructor(context: Context) {
             } catch (e: HttpException) {
                 // Only the status code is shown or logged, never the request headers.
                 Log.w(TAG, "OJP failed: HTTP ${e.code}")
+                if (e.code == 401 || e.code == 403) ojpRejected = true
                 _source.update {
                     it.copy(ojpProblem = if (e.code == 401 || e.code == 403) "OJP key rejected (HTTP ${e.code})" else "OJP error (HTTP ${e.code})")
                 }
@@ -152,6 +160,39 @@ class Backend private constructor(context: Context) {
         return logged("transport.opendata.ch", what, cause, { TransportClient.connections(from.id, to.id, at, limit) }) { "${it.size} trips" }.also {
             _source.update { s -> s.copy(name = "transport.opendata.ch") }
         }
+    }
+
+    /**
+     * Which APIs accept [key]: true / false, or null when it could not be told (offline, server error). OJP is
+     * asked for one trip, the formation service for a train number that does not exist (an empty answer).
+     */
+    suspend fun checkKey(key: String, from: Station, to: Station): Pair<Boolean?, Boolean?> {
+        val now = nowSec()
+        val ojp = accepts {
+            logged("OJP", "${from.name} → ${to.name}", "Key check", { OjpClient.connections(key, from, to, now, 1) }) { "${it.size} trips" }
+        }
+        val formation = accepts {
+            val day = now.toSwiss().toLocalDate().toString()
+            logged("Formation", "SBBP no. 1, $day", "Key check", { FormationClient.full(key, "SBBP", day, "1") }) { "${it.length} bytes" }
+        }
+        return ojp to formation
+    }
+
+    private suspend fun <T> accepts(request: suspend () -> T): Boolean? = try {
+        request()
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: HttpException) {
+        when (e.code) {
+            401, 403 -> false
+            in 500..599 -> null
+            else -> true // let in, but the question was odd (e.g. an unknown train)
+        }
+    } catch (e: IOException) {
+        null
+    } catch (e: Exception) {
+        true // an answer the parser did not expect: the key got through
     }
 
     private val formations = mutableMapOf<String, CachedFormation>()

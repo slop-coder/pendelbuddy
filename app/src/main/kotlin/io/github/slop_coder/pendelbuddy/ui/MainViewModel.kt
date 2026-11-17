@@ -88,6 +88,8 @@ data class CommuteState(
     val ojpKeySet: Boolean = false,
     /** A key for the train formation service is saved. */
     val formationKeySet: Boolean = false,
+    /** What happened to the key entered last ("Checking…", "Saved for OJP 2.0 and the train map"…). */
+    val keyCheck: String? = null,
     /** Where the last timetable came from, or what went wrong with OJP. */
     val source: String? = null,
     val ojpProblem: String? = null,
@@ -227,6 +229,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves (or with null/blank removes) the OJP key and tries it right away. */
+    /**
+     * A key entered in Settings: tried with both APIs and saved for each one that accepts it (opentransportdata.swiss
+     * gives each API its own key, but one key may be enabled for several).
+     */
+    fun enterKey(key: String) {
+        val k = key.trim().removePrefix("Bearer ").trim()
+        if (k.isEmpty()) return
+        viewModelScope.launch {
+            _state.update { it.copy(keyCheck = "Checking the key…") }
+            val s = _state.value.settings
+            val from = s.home ?: Station("8507000", "Bern")
+            val to = s.work ?: Station("8503000", "Zürich HB")
+            val (ojp, formation) = backend.checkKey(k, from, to)
+            withContext(Dispatchers.IO) {
+                // Saved where it works; and where it was saved before but is refused (entered in the wrong place), removed.
+                for ((which, ok) in listOf(ApiKey.OJP to ojp, ApiKey.FORMATION to formation)) {
+                    if (ok == true) secrets.set(which, k)
+                    else if (ok == false && secrets.get(which) == k) secrets.set(which, null)
+                }
+            }
+            val saved = listOfNotNull("OJP 2.0".takeIf { ojp == true }, "train map".takeIf { formation == true })
+            val message = when {
+                saved.isNotEmpty() -> "Saved for " + saved.joinToString(" and ")
+                ojp == null || formation == null -> "Could not check the key (offline?). Nothing saved."
+                else -> "Neither API accepts this key. Nothing saved."
+            }
+            val ojpSet = withContext(Dispatchers.IO) { secrets.hasOjpKey() }
+            val formationSet = withContext(Dispatchers.IO) { secrets.has(ApiKey.FORMATION) }
+            _state.update { it.copy(keyCheck = message, ojpKeySet = ojpSet, formationKeySet = formationSet) }
+            backend.clearSourceProblem()
+            if (ojp == true) refresh(force = true, cause = "Key saved")
+        }
+    }
+
     /** Saves (or with null removes) the train formation service's key. */
     fun setFormationKey(key: String?) {
         viewModelScope.launch {

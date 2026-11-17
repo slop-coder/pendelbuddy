@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,7 +75,6 @@ import com.journeyapps.barcodescanner.CaptureActivity
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import io.github.slop_coder.pendelbuddy.core.Buffer
-import io.github.slop_coder.pendelbuddy.data.ApiKey
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
 import io.github.slop_coder.pendelbuddy.core.Fake
@@ -98,8 +98,7 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, 
     var picking by remember { mutableStateOf<Pick?>(null) }
     /** Which time is being picked: the switch to trips home, or the morning / evening button. */
     var timeDialog by remember { mutableStateOf<TimeSetting?>(null) }
-    /** Which key is being pasted, if any. */
-    var keyDialog by remember { mutableStateOf<ApiKey?>(null) }
+    var keyDialog by remember { mutableStateOf(false) }
     var bufferDialog by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Station?>(null) }
     // Changes are saved when you leave the tab (or, on first setup, as soon as home and work are set).
@@ -221,8 +220,15 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, 
             }
 
             Header("Data")
+            Text(
+                "API keys from api-manager.opentransportdata.swiss. Enter a key and the app tries it with each API " +
+                    "and keeps it for those that accept it.",
+                Modifier.padding(horizontal = 16.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             ListItem(
-                headlineContent = { Text("OJP 2.0 API key") },
+                headlineContent = { Text("OJP 2.0 (timetable, delays, occupancy)") },
                 supportingContent = {
                     Column {
                         Text(
@@ -236,23 +242,38 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, 
                 leadingContent = { Icon(Icons.Filled.Key, null) },
                 trailingContent = {
                     if (status.ojpKeySet) TextButton(onClick = { vm.setOjpKey(null) }) { Text("Remove") }
-                    else TextButton(onClick = { keyDialog = ApiKey.OJP }) { Text("Paste") }
                 },
             )
             ListItem(
-                headlineContent = { Text("Train formation API key") },
+                headlineContent = { Text("Train Formation Service (train map)") },
                 supportingContent = {
                     Text(
                         if (status.formationKeySet) "Saved (encrypted, never shown again)"
-                        else "Not set: no train map. A separate key from the API Manager (Train Formation Service)"
+                        else "Not set: no train map"
                     )
                 },
                 leadingContent = { Icon(Icons.Filled.Key, null) },
                 trailingContent = {
                     if (status.formationKeySet) TextButton(onClick = { vm.setFormationKey(null) }) { Text("Remove") }
-                    else TextButton(onClick = { keyDialog = ApiKey.FORMATION }) { Text("Paste") }
                 },
             )
+            val missing = listOfNotNull("OJP 2.0".takeIf { !status.ojpKeySet }, "Train Formation Service".takeIf { !status.formationKeySet })
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton(onClick = { keyDialog = true }) {
+                    Icon(Icons.Filled.Key, null, Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Enter key")
+                }
+                Spacer(Modifier.size(12.dp))
+                Text(
+                    if (missing.isEmpty()) "All keys set" else "Missing: " + missing.joinToString(", "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (missing.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                )
+            }
+            status.keyCheck?.let {
+                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
+            }
 
             val today = status.now.toSwiss().toLocalDate()
             ListItem(
@@ -304,13 +325,7 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, 
             onDismiss = { bufferDialog = false },
         )
     }
-    keyDialog?.let { which ->
-        KeyDialog(
-            title = if (which == ApiKey.OJP) "OJP 2.0 API key" else "Train formation API key",
-            onSave = { if (which == ApiKey.OJP) vm.setOjpKey(it) else vm.setFormationKey(it); keyDialog = null },
-            onDismiss = { keyDialog = null },
-        )
-    }
+    if (keyDialog) KeyDialog(title = "API key", onSave = { vm.enterKey(it); keyDialog = false }, onDismiss = { keyDialog = false })
     timeDialog?.let { which ->
         val current = when (which) {
             TimeSetting.SWITCH -> s.switchMinute
@@ -433,8 +448,8 @@ private fun KeyDialog(title: String, onSave: (String) -> Unit, onDismiss: () -> 
         text = {
             Column {
                 Text(
-                    "From api-manager.opentransportdata.swiss. Long-press the field to paste. " +
-                        "It is stored encrypted on this phone only.",
+                    "From api-manager.opentransportdata.swiss. Long-press the field to paste. It is tried with " +
+                        "OJP 2.0 and the Train Formation Service and stored encrypted, on this phone only, for each that accepts it.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.size(8.dp))
@@ -456,7 +471,7 @@ private fun KeyDialog(title: String, onSave: (String) -> Unit, onDismiss: () -> 
                 scanError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(key) }, enabled = key.isNotBlank()) { Text("Save") } },
+        confirmButton = { TextButton(onClick = { onSave(key) }, enabled = key.isNotBlank()) { Text("Check and save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

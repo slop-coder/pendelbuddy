@@ -3,6 +3,8 @@ package io.github.slop_coder.pendelbuddy.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.slop_coder.pendelbuddy.core.DebugEntry
 import io.github.slop_coder.pendelbuddy.core.toSwiss
@@ -70,17 +73,21 @@ private fun Entry(e: DebugEntry, sameDay: Boolean) {
     val t = (e.time / 1000).toSwiss()
     val failed = e.result.startsWith("HTTP") || e.result.contains("Exception")
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        // Time and kind keep their width; a long result (an error text) wraps on the right.
         Row {
             Text(
                 (if (sameDay) "" else day(t.toLocalDate()) + " ") + t.format(HMS) + " · " + e.kind,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
+                maxLines = 1,
             )
+            Spacer(Modifier.width(12.dp))
             Text(
                 "${e.result} · ${e.millis} ms",
                 style = MaterialTheme.typography.labelMedium,
                 color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f),
             )
         }
         Text(e.what, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
