@@ -117,8 +117,13 @@ data class Leg(
     /** OJP's id of this run of the train and its operating day (yyyy-mm-dd), to find it again in a later answer. */
     val journeyRef: String? = null,
     val operatingDay: String? = null,
+    /** Transport company number from OJP ("11" = SBB), to ask the formation service the right company. */
+    val operator: String? = null,
 ) {
     val walk get() = line == null
+
+    /** The company code the formation service knows this train by; SBB when unknown. */
+    val evu get() = EVU[operator] ?: "SBBP"
 
     /** Why you cannot ride this train as planned, or null. */
     val problem get() = when {
@@ -170,6 +175,9 @@ data class Leg(
     /** Identifies "the same train" across days: line, boarding station and scheduled time of day. */
     val trainKey get() = line?.let { "$it|$fromId|${departure.toSwiss().toLocalTime()}" }
 }
+
+/** OJP operator numbers → formation service company codes (only those the service covers). */
+private val EVU = mapOf("11" to "SBBP", "33" to "BLSP", "82" to "SOB", "65" to "THURBO")
 
 @Serializable
 data class Trip(

@@ -9,6 +9,7 @@ import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.DebugEntry
 import io.github.slop_coder.pendelbuddy.core.Fake
 import io.github.slop_coder.pendelbuddy.core.LOOK_BACK
+import io.github.slop_coder.pendelbuddy.core.Leg
 import io.github.slop_coder.pendelbuddy.core.MyTrip
 import io.github.slop_coder.pendelbuddy.core.Route
 import io.github.slop_coder.pendelbuddy.core.Settings
@@ -62,7 +63,10 @@ class Backend private constructor(context: Context) {
     private val loadLock = Mutex()
 
     init {
-        if (BuildConfig.DEBUG) OjpClient.debugDump = File(app.filesDir, "ojp-last.xml")
+        if (BuildConfig.DEBUG) {
+            OjpClient.debugDump = File(app.filesDir, "ojp-last.xml")
+            FormationClient.debugDump = File(app.filesDir, "formation-last.json")
+        }
     }
 
     /** Reads the request log and your trip once per process. */
@@ -142,6 +146,25 @@ class Backend private constructor(context: Context) {
         }
         return logged("transport.opendata.ch", what, cause, { TransportClient.connections(from.id, to.id, at, limit) }) { "${it.size} trips" }.also {
             _source.update { s -> s.copy(name = "transport.opendata.ch") }
+        }
+    }
+
+    /**
+     * Debug builds: downloads the formation of [leg] and keeps the answer in files/formation-last.json; the request
+     * log says how it went. For writing the train map's parser.
+     */
+    suspend fun downloadFormation(leg: Leg) {
+        val key = withContext(Dispatchers.IO) { secrets.ojpKey() } ?: return
+        val number = leg.trainNumber ?: return
+        val date = leg.operatingDay ?: leg.departure.toSwiss().toLocalDate().toString()
+        try {
+            logged("Formation", "${leg.line} no. $number (${leg.evu}), $date", "Debug download", { FormationClient.full(key, leg.evu, date, number) }) {
+                "${it.length / 1024} kB"
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Formation download failed", e)
         }
     }
 

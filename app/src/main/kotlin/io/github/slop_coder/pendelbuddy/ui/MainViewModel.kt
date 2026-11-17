@@ -302,6 +302,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Debug builds: saves the formation answer of [leg] for the parser (see the request log). */
+    fun downloadFormation(leg: Leg) {
+        viewModelScope.launch { backend.downloadFormation(leg) }
+    }
+
     fun pullToRefreshMyTrip() {
         viewModelScope.launch { refreshMyTrip(cause = "Pull to refresh") }
     }

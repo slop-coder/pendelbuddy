@@ -133,6 +133,7 @@ object Ojp {
             calls = calls,
             journeyRef = service?.child("JourneyRef")?.textContent?.trim()?.takeIf { it.isNotEmpty() },
             operatingDay = service?.child("OperatingDayRef")?.textContent?.trim()?.takeIf { it.isNotEmpty() },
+            operator = service?.child("OperatorRef")?.textContent?.trim()?.substringAfterLast(':')?.takeIf { it.isNotEmpty() },
         )
     }
 

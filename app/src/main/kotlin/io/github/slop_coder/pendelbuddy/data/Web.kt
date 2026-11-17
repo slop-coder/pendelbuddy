@@ -54,6 +54,21 @@ object Http {
         }
     }
 
+    /** GETs with a bearer token (only in the header, never in a message or log line), gzipped. */
+    suspend fun get(url: String, bearer: String): String = withContext(Dispatchers.IO) {
+        val c = open(url)
+        try {
+            c.setRequestProperty("Authorization", "Bearer $bearer")
+            c.setRequestProperty("Accept", "application/json")
+            c.setRequestProperty("Accept-Encoding", "gzip")
+            if (c.responseCode !in 200..299) throw HttpException(c.responseCode, url)
+            val gzip = c.contentEncoding.equals("gzip", ignoreCase = true)
+            (if (gzip) GZIPInputStream(c.inputStream) else c.inputStream).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } finally {
+            c.disconnect()
+        }
+    }
+
     fun open(url: String): HttpURLConnection {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000
@@ -97,6 +112,24 @@ object OjpClient {
 }
 
 /** Open-Meteo with the MeteoSwiss ICON-CH2 model (5 days, 2 km). */
+/**
+ * Train Formation Service (opentransportdata.swiss, same token as OJP): wagons, classes and sectors of a train,
+ * from today up to 3 days ahead.
+ */
+object FormationClient {
+    private const val URL = "https://api.opentransportdata.swiss/formation/v2/formations_full"
+
+    /** Debug builds: the last answer, for writing the parser. */
+    var debugDump: File? = null
+
+    /** The raw answer for train [trainNumber] of railway company [evu] (e.g. "SBBP") on [date] (yyyy-mm-dd). */
+    suspend fun full(key: String, evu: String, date: String, trainNumber: String): String {
+        val body = Http.get("$URL?evu=${enc(evu)}&operationDate=${enc(date)}&trainNumber=${enc(trainNumber)}", key)
+        debugDump?.let { f -> withContext(Dispatchers.IO) { f.writeText(body) } }
+        return body
+    }
+}
+
 object WeatherClient {
     suspend fun forecast(lat: Double, lon: Double, now: Long): Forecast = WeatherParser.parse(
         Http.text(

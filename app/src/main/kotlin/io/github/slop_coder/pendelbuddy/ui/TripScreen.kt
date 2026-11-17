@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.slop_coder.pendelbuddy.BuildConfig
 import io.github.slop_coder.pendelbuddy.core.Call
 import io.github.slop_coder.pendelbuddy.core.Change
 import io.github.slop_coder.pendelbuddy.core.Freshness
@@ -277,6 +278,12 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
             if (canRate) {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 RatingBar(vm, leg)
+            }
+            // Debug builds only, until the train map exists: keeps the formation service's answer on the phone.
+            if (BuildConfig.DEBUG && leg.trainNumber != null) {
+                TextButton(onClick = { vm.downloadFormation(leg) }, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                    Text("Debug: download formation (${leg.evu})", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }
