@@ -230,7 +230,8 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
     val formations by vm.formations.collectAsState()
     val formation = formations[vm.formationKey(leg)]
     LaunchedEffect(vm.formationKey(leg)) { if (!leg.walk) vm.loadFormation(leg) }
-    var sector by remember(leg.trainKey) { mutableStateOf(vm.lastSector(leg)) }
+    var wagon by remember(leg.trainKey) { mutableStateOf(vm.lastWagon(leg)) }
+    val sector = formation?.wagons?.firstOrNull { wagon != null && it.number == wagon }?.sectors?.firstOrNull()
     Card(Modifier.fillMaxWidth(), colors = colors) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -265,7 +266,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
             Forecast(leg, cls)
             formation?.let {
                 Spacer(Modifier.size(8.dp))
-                TrainMap(it, cls, sector) { s -> sector = s }
+                TrainMap(it, cls, wagon) { w -> wagon = w?.number }
             }
             vm.averageFor(leg)?.let {
                 Text(
@@ -286,7 +287,7 @@ private fun TrainCard(vm: MainViewModel, leg: Leg, cls: TravelClass, canRate: Bo
             }
             if (canRate) {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                RatingBar(vm, leg, sector)
+                RatingBar(vm, leg, wagon, sector)
             }
         }
     }
@@ -346,7 +347,7 @@ private fun className(c: TravelClass) = if (c == TravelClass.FIRST) "1st class" 
  * left (picked from the clock, can be changed).
  */
 @Composable
-private fun RatingBar(vm: MainViewModel, leg: Leg, sector: String?) {
+private fun RatingBar(vm: MainViewModel, leg: Leg, wagon: Int?, sector: String?) {
     var call by remember(leg.trainKey, leg.departure) { mutableStateOf(leg.callAt(System.currentTimeMillis() / 1000)) }
     var saved by remember(leg, call) { mutableStateOf(vm.ratingFor(leg, call)?.percent) }
     var value by remember(leg, call) { mutableFloatStateOf((saved ?: 50).toFloat()) }
@@ -363,7 +364,7 @@ private fun RatingBar(vm: MainViewModel, leg: Leg, sector: String?) {
             )
         }
         FilledTonalButton(
-            onClick = { vm.rate(leg, percent, call, sector); saved = percent },
+            onClick = { vm.rate(leg, percent, call, wagon, sector); saved = percent },
             enabled = saved != percent,
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
             modifier = Modifier.height(34.dp),

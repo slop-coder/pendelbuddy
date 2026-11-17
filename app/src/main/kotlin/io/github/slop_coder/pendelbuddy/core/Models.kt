@@ -119,6 +119,8 @@ data class Leg(
     val operatingDay: String? = null,
     /** Transport company number from OJP ("11" = SBB), to ask the formation service the right company. */
     val operator: String? = null,
+    /** OJP's mode: "rail", "bus", "tram"…; null when not known (transport.opendata.ch, older saved trips). */
+    val mode: String? = null,
 ) {
     val walk get() = line == null
 

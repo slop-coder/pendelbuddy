@@ -31,16 +31,13 @@ import io.github.slop_coder.pendelbuddy.core.TrainFormation
 import io.github.slop_coder.pendelbuddy.core.TravelClass
 import io.github.slop_coder.pendelbuddy.core.Wagon
 
-/** 1st class wagons: the yellow of the stripe on Swiss trains. */
-private val FIRST = Color(0xFFFFD54F)
-
 /**
- * The train along the platform where you get on, sector A on the left: wagon numbers, 1st class in yellow,
- * restaurants, closed wagons dimmed, and the sector letters under it. Tapping a wagon picks the sector you sit in
- * (tap again to clear); it is saved with your rating.
+ * The train along the platform where you get on, sector A on the left: wagon numbers, 1st class inverted (light on
+ * dark, dark on light), restaurants, closed wagons dimmed, and the sector letters under it. Tapping a wagon picks
+ * the one you sit in (tap again to clear); it is saved with your rating.
  */
 @Composable
-fun TrainMap(f: TrainFormation, cls: TravelClass, sector: String?, onSector: (String?) -> Unit) {
+fun TrainMap(f: TrainFormation, cls: TravelClass, wagon: Int?, onWagon: (Wagon?) -> Unit) {
     val mine = f.sectorsOf(cls)
     Text(
         listOfNotNull(
@@ -58,40 +55,48 @@ fun TrainMap(f: TrainFormation, cls: TravelClass, sector: String?, onSector: (St
             // The letter under the wagon where a new sector starts.
             val label = w.sectors.firstOrNull()?.takeIf { it != shown }
             w.sectors.lastOrNull()?.let { shown = it }
+            val picked = wagon != null && w.number == wagon
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                WagonBox(w, picked = sector != null && sector in w.sectors) {
-                    val s = w.sectors.firstOrNull()
-                    onSector(if (s == null || s == sector) null else s)
-                }
-                Text(label ?: "", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                WagonBox(w, picked) { onWagon(if (picked) null else w) }
+                Text(
+                    if (picked) "▲" else label ?: "",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (picked) MaterialTheme.colorScheme.tertiary else Color.Unspecified,
+                )
             }
         }
     }
-    if (sector != null) {
-        Text("You sit in sector $sector", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-    }
+    val mineNow = f.wagons.firstOrNull { wagon != null && it.number == wagon }
+    Text(
+        if (mineNow != null) "You sit in wagon $wagon" + (mineNow.sectors.takeIf { it.isNotEmpty() }?.let { " (sector ${ranges(it)})" } ?: "")
+        else "Tap the wagon you sit in",
+        style = MaterialTheme.typography.bodySmall,
+        color = if (mineNow != null) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
 private fun WagonBox(w: Wagon, picked: Boolean, onClick: () -> Unit) {
-    val bg = when {
-        w.firstClass -> FIRST
-        w.passengers -> MaterialTheme.colorScheme.surfaceVariant
-        else -> MaterialTheme.colorScheme.outline
+    val c = MaterialTheme.colorScheme
+    val (bg, fg) = when {
+        picked -> c.tertiary to c.onTertiary
+        w.firstClass -> c.inverseSurface to c.inverseOnSurface
+        w.passengers -> c.surfaceVariant to c.onSurfaceVariant
+        else -> c.outlineVariant to c.onSurfaceVariant
     }
-    val fg = if (w.firstClass) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant
     val shape = RoundedCornerShape(4.dp)
     Box(
         Modifier.width(if (w.passengers) 34.dp else 20.dp).height(26.dp)
             .alpha(if (w.closed) 0.35f else 1f)
             .background(bg, shape)
-            .then(if (picked) Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), shape) else Modifier)
-            .clickable(enabled = w.sectors.isNotEmpty(), onClick = onClick),
+            .then(if (picked) Modifier.border(BorderStroke(2.dp, c.onSurface), shape) else Modifier)
+            .clickable(enabled = w.number != null && w.passengers, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         when {
             w.restaurant -> Icon(Icons.Filled.Restaurant, "Restaurant", Modifier.size(16.dp), tint = fg)
-            w.number != null -> Text("${w.number}", style = MaterialTheme.typography.labelMedium, color = fg)
+            w.number != null -> Text("${w.number}", style = MaterialTheme.typography.labelMedium, color = fg, fontWeight = FontWeight.Bold)
         }
     }
 }

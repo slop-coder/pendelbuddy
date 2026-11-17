@@ -201,7 +201,8 @@ data class Rating(
      */
     val callId: String? = null,
     val callName: String? = null,
-    /** The platform sector of the wagon you sat in (from the train map), e.g. "C". */
+    /** The wagon you sat in (its number, from the train map) and its platform sector where you got on, e.g. "C". */
+    val wagon: Int? = null,
     val sector: String? = null,
 ) {
     fun forecast() = if (travelClass == TravelClass.FIRST) forecastFirst else forecastSecond
@@ -275,7 +276,7 @@ object Ratings {
 
     /** Every rating, one row each, for analysis in a spreadsheet. Times are Swiss local time. */
     fun toCsv(all: List<Rating>): String = buildString {
-        appendLine("rated_at,date,departure,line,train_number,from,to,delay_min,class,rating_percent,forecast_level,forecast_first,forecast_second,rated_from,sector")
+        appendLine("rated_at,date,departure,line,train_number,from,to,delay_min,class,rating_percent,forecast_level,forecast_first,forecast_second,rated_from,wagon,sector")
         for (r in all.sortedBy { it.ratedAt }) {
             appendLine(
                 listOf(
@@ -290,6 +291,7 @@ object Ratings {
                     r.forecastFirst?.toString().orEmpty(),
                     r.forecastSecond?.toString().orEmpty(),
                     csv(r.callName),
+                    r.wagon?.toString().orEmpty(),
                     csv(r.sector),
                 ).joinToString(",")
             )

@@ -2,6 +2,7 @@ package io.github.slop_coder.pendelbuddy.data
 
 import android.content.Context
 import android.util.Log
+import io.github.slop_coder.pendelbuddy.core.CachedFormation
 import io.github.slop_coder.pendelbuddy.core.DebugEntry
 import io.github.slop_coder.pendelbuddy.core.Forecast
 import io.github.slop_coder.pendelbuddy.core.MyTrip
@@ -38,6 +39,10 @@ class Store(context: Context) {
         if (t == null) withContext(Dispatchers.IO) { File(dir, "my-trip.json").delete(); Unit }
         else write("my-trip.json", MyTrip.serializer(), t)
 
+    /** Train formations by "day|company|train number". */
+    suspend fun formations() = read("formations.json", formationMap).orEmpty()
+    suspend fun saveFormations(f: Map<String, CachedFormation>) = write("formations.json", formationMap, f)
+
     /** Forecasts by station id. */
     suspend fun forecasts() = read("forecasts.json", forecastMap).orEmpty()
     suspend fun saveForecasts(f: Map<String, Forecast>) = write("forecasts.json", forecastMap, f)
@@ -50,6 +55,7 @@ class Store(context: Context) {
     suspend fun dropOldFiles() = withContext(Dispatchers.IO) { File(dir, "occupancy.json").delete() }
 
     private val forecastMap = MapSerializer(String.serializer(), Forecast.serializer())
+    private val formationMap = MapSerializer(String.serializer(), CachedFormation.serializer())
 
     private fun routeFile(fromId: String, toId: String) = "routes/${fromId.safe()}-${toId.safe()}.json"
     private fun String.safe() = replace(Regex("[^A-Za-z0-9]"), "_")

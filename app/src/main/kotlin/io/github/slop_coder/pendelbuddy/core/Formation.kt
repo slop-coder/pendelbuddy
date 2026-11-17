@@ -49,6 +49,10 @@ data class TrainFormation(val stopId: String, val stopName: String, val track: S
     fun sectorsOf(c: TravelClass): List<String> = wagons.filter { it.has(c) && !it.closed }.flatMap { it.sectors }.distinct().sorted()
 }
 
+/** A downloaded formation: every stop of the run (empty: the service has none for this train). */
+@Serializable
+data class CachedFormation(val fetchedAt: Long, val stops: List<TrainFormation>)
+
 object Formations {
     private val json = Json { ignoreUnknownKeys = true }
 

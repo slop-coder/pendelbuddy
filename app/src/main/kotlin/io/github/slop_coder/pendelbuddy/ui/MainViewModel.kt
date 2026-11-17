@@ -366,9 +366,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** The sector you sat in on this train last time, to start from. */
-    fun lastSector(leg: Leg): String? =
-        ratings.filter { it.trainKey == leg.trainKey && it.sector != null }.maxByOrNull { it.ratedAt }?.sector
+    /** The wagon you sat in on this train last time, to start from. */
+    fun lastWagon(leg: Leg): Int? =
+        ratings.filter { it.trainKey == leg.trainKey && it.wagon != null }.maxByOrNull { it.ratedAt }?.wagon
 
     fun pullToRefreshMyTrip() {
         viewModelScope.launch { refreshMyTrip(cause = "Pull to refresh") }
@@ -410,7 +410,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves a rating of [leg] together with the forecast it showed; earlier ratings are kept for analysis. */
-    fun rate(leg: Leg, percent: Int, call: Call?, sector: String?) {
+    fun rate(leg: Leg, percent: Int, call: Call?, wagon: Int?, sector: String?) {
         // The forecast from the stop rated from, or for the whole ride (its worst stretch).
         val forecast = call?.capacity ?: leg.capacity
         val r = Rating(
@@ -429,6 +429,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ratedAt = nowSec(),
             callId = call?.id,
             callName = call?.name,
+            wagon = wagon,
             sector = sector,
         )
         ratings = ratings + r

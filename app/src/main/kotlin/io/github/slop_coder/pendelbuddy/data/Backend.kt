@@ -7,6 +7,7 @@ import io.github.slop_coder.pendelbuddy.core.Change
 import io.github.slop_coder.pendelbuddy.core.Changes
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.DebugEntry
+import io.github.slop_coder.pendelbuddy.core.CachedFormation
 import io.github.slop_coder.pendelbuddy.core.Fake
 import io.github.slop_coder.pendelbuddy.core.Formations
 import io.github.slop_coder.pendelbuddy.core.TrainFormation
@@ -33,7 +34,6 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private class CachedFormation(val fetchedAt: Long, val stops: List<TrainFormation>)
 
 /** Where the last timetable came from, or what went wrong with OJP. */
 data class Source(val name: String? = null, val ojpProblem: String? = null)
@@ -195,7 +195,8 @@ class Backend private constructor(context: Context) {
         true // an answer the parser did not expect: the key got through
     }
 
-    private val formations = mutableMapOf<String, CachedFormation>()
+    /** Formations by "day|company|train number"; saved, so they survive a restart or a moment without network. */
+    private var formations: MutableMap<String, CachedFormation>? = null
     private val formationLock = Mutex()
 
     /**
@@ -205,28 +206,38 @@ class Backend private constructor(context: Context) {
      */
     suspend fun formation(leg: Leg, cause: String): TrainFormation? = formationLock.withLock {
         val number = leg.trainNumber ?: return@withLock null
+        // Buses and trams have no formation (the service says "no formation data").
+        if (leg.mode != null && leg.mode != "rail") return@withLock null
         val day = leg.operatingDay?.let { LocalDate.parse(it) } ?: leg.departure.toSwiss().toLocalDate()
         val today = nowSec().toSwiss().toLocalDate()
         if (day.isBefore(today) || day.isAfter(today.plusDays(3))) return@withLock null
         val id = "$day|${leg.evu}|$number"
         val now = nowSec()
-        val cached = formations[id]?.takeIf { now - it.fetchedAt < FORMATION_MAX }
+        val all = formations ?: store.formations().toMutableMap().also { formations = it }
+        suspend fun keep(stops: List<TrainFormation>) {
+            all[id] = CachedFormation(now, stops)
+            all.entries.removeAll { (k, _) -> LocalDate.parse(k.substringBefore('|')).isBefore(today) }
+            store.saveFormations(all)
+        }
+        val cached = all[id]?.takeIf { now - it.fetchedAt < FORMATION_MAX }
         val stops = cached?.stops ?: run {
             val key = withContext(Dispatchers.IO) { secrets.get(ApiKey.FORMATION) } ?: return@withLock null
             try {
                 val body = logged("Formation", "${leg.line} no. $number (${leg.evu}), $day", cause, { FormationClient.full(key, leg.evu, day.toString(), number) }) {
                     "${it.length / 1024} kB"
                 }
-                withContext(Dispatchers.Default) { Formations.parse(body) }.also {
-                    formations[id] = CachedFormation(now, it)
-                    formations.entries.removeAll { (k, _) -> LocalDate.parse(k.substringBefore('|')).isBefore(today) }
-                }
+                withContext(Dispatchers.Default) { Formations.parse(body) }.also { keep(it) }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: HttpException) {
+                Log.w(TAG, "Formation download failed: HTTP ${e.code}")
+                // "No formation data" (400/404): remembered as none, not asked again for a while.
+                if (e.code == 400 || e.code == 404) emptyList<TrainFormation>().also { keep(it) }
+                else all[id]?.stops ?: return@withLock null
             } catch (e: Exception) {
                 Log.w(TAG, "Formation download failed", e)
-                // Offline or unknown train: an older copy is better than nothing.
-                formations[id]?.stops ?: return@withLock null
+                // Offline: an older copy is better than nothing.
+                all[id]?.stops ?: return@withLock null
             }
         }
         stops.firstOrNull { it.stopId == leg.fromId }
