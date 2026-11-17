@@ -7,6 +7,7 @@ import io.github.slop_coder.pendelbuddy.core.Change
 import io.github.slop_coder.pendelbuddy.core.Changes
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.DebugEntry
+import io.github.slop_coder.pendelbuddy.core.Fake
 import io.github.slop_coder.pendelbuddy.core.LOOK_BACK
 import io.github.slop_coder.pendelbuddy.core.MyTrip
 import io.github.slop_coder.pendelbuddy.core.Route
@@ -178,15 +179,20 @@ class Backend private constructor(context: Context) {
             store.saveRoute(store.route(mine.from.id, mine.to.id).merge(fresh, now))
             val found = mine.findIn(fresh)
             // Not in the answer: keep showing the last known version, marked as missing.
-            var updated = mine.copy(trip = found ?: mine.trip, fetchedAt = now, found = found != null)
             // Dropped or replaced while downloading: keep what you chose.
-            if (_myTrip.value?.trip?.key != mine.trip.key) return@withLock true
-            val news = Changes.of(updated, now).filter { it.key !in mine.alerted }
-            updated = updated.copy(alerted = mine.alerted + news.map { it.key })
-            _myTrip.value = updated
-            store.saveMyTrip(updated)
-            if (news.isNotEmpty()) Alerts.changed(app, updated, news)
-            Alerts.updateWatching(app, updated)
+            val latest = _myTrip.value
+            if (latest?.trip?.key != mine.trip.key) return@withLock true
+            val fake = latest.fake
+            val real = found ?: latest.real ?: latest.trip
+            publish(
+                latest.copy(
+                    trip = fake?.applyTo(real) ?: real,
+                    real = real.takeIf { fake != null },
+                    fetchedAt = now,
+                    found = found != null && fake?.gone != true,
+                ),
+                now,
+            )
             true
         } catch (e: CancellationException) {
             throw e
@@ -196,6 +202,35 @@ class Backend private constructor(context: Context) {
         } finally {
             _myTripLoading.value = false
         }
+    }
+
+    /** Saves [updated] as your trip and notifies the changes not announced before. */
+    private suspend fun publish(updated: MyTrip, now: Long) {
+        val news = Changes.of(updated, now).filter { it.key !in updated.alerted }
+        val saved = updated.copy(alerted = updated.alerted + news.map { it.key })
+        _myTrip.value = saved
+        store.saveMyTrip(saved)
+        if (news.isNotEmpty()) Alerts.changed(app, saved, news)
+        Alerts.updateWatching(app, saved)
+    }
+
+    /**
+     * Testing: puts made-up changes on your trip right away (and on every download after), and announces them like
+     * real ones. Clearing forgets what was announced, so the same test can be repeated, and downloads the trip again.
+     */
+    suspend fun setFake(fake: Fake?) {
+        myTripLock.withLock {
+            val mine = _myTrip.value ?: return
+            val f = fake?.takeIf { it.any }
+            val real = mine.real ?: mine.trip
+            if (f == null) {
+                _myTrip.value = mine.copy(fake = null, real = null, trip = real, alerted = emptySet(), found = true)
+                store.saveMyTrip(_myTrip.value)
+            } else {
+                publish(mine.copy(fake = f, real = real, trip = f.applyTo(real), found = !f.gone), nowSec())
+            }
+        }
+        if (fake?.any != true) refreshMyTrip("Test changes cleared")
     }
 
     /** Your trip's current changes, for the banner and the My trip tab. */

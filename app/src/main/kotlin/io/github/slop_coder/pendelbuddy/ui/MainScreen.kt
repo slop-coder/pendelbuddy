@@ -53,13 +53,18 @@ fun MainScreen(vm: MainViewModel) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
     }
-    // Until home and work are set there is nothing else to show.
-    val current = if (st.settings.complete) tab else Tab.SETTINGS
+    // Until home and work are set there is nothing else to show; My trip only while you have one.
+    val tabs = Tab.entries.filter { it != Tab.MY_TRIP || st.myTrip != null }
+    val current = when {
+        !st.settings.complete -> Tab.SETTINGS
+        tab !in tabs -> Tab.TRIPS
+        else -> tab
+    }
     BackHandler(enabled = current != Tab.TRIPS && st.settings.complete) { tab = Tab.TRIPS }
     Scaffold(
         bottomBar = {
             NavigationBar {
-                for (t in Tab.entries) {
+                for (t in tabs) {
                     NavigationBarItem(
                         selected = current == t,
                         // Tapping the tab you are on goes back to its start (closes the trip or the request log).

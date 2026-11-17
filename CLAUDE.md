@@ -54,6 +54,9 @@ Public repo, Unlicense. What the app does is in `README.md`.
   a cancelled train, the train not serving the user's boarding or exit stop, a broken connection, the trip gone
   from the answer. Not for skipped stops where the user neither boards nor alights. Each change is notified once.
   "Alternatives" sets "I'm at" and the time to where and when the problem is.
+- Done: Settings → Testing (only while a trip is set): fake delay, cancellation, new platform, not stopping at
+  the exit, trip gone. Put on top of every download until cleared (`Fake`, `MyTrip.real`). The My trip tab is
+  hidden while no trip is set.
 - Done: the trip screen and My trip share one view (data age, changes, "I take this"); the bottom bar stays on
   every screen. Cancelled trains (or not stopping where you get on or off) are tinted red with the reason in words.
 - Ratings are tied to a stop (picked from the clock and the delay, changeable); badges are split into stretches.

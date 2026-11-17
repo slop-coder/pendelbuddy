@@ -74,6 +74,20 @@ class ChangesTest {
     }
 
     @Test
+    fun fakeChangesAreAnnounced() {
+        val real = mine(ic(), change, s3())
+        fun keysWith(f: Fake) = keys(real.copy(trip = f.applyTo(real.trip), found = !f.gone))
+        assertEquals(listOf("late-dep:1", "connection:1"), keysWith(Fake(delay = 10)))
+        assertEquals(listOf("cancelled:0"), keysWith(Fake(cancelFirst = true)))
+        assertEquals(listOf("platform:0:6"), keysWith(Fake(newPlatform = true)))
+        assertEquals(listOf("skip-alight:0"), keysWith(Fake(skipExit = true)))
+        assertEquals(listOf("gone"), keysWith(Fake(gone = true)))
+        // Applied to the real trip each time: switching the delay off again leaves no trace.
+        assertEquals(real.trip, Fake().applyTo(real.trip))
+        assertEquals(10, Fake(delay = 10).applyTo(real.trip).departureDelay)
+    }
+
+    @Test
     fun problemInWords() {
         assertEquals(null, ic().problem)
         assertEquals("IC 8 is cancelled", ic(cancelled = true).problem)

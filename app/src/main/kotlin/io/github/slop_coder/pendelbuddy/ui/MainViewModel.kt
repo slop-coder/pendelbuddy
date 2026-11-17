@@ -12,6 +12,7 @@ import io.github.slop_coder.pendelbuddy.core.Direction
 import io.github.slop_coder.pendelbuddy.core.Forecast
 import io.github.slop_coder.pendelbuddy.core.Freshness
 import io.github.slop_coder.pendelbuddy.core.LOOK_BACK
+import io.github.slop_coder.pendelbuddy.core.Fake
 import io.github.slop_coder.pendelbuddy.core.Leg
 import io.github.slop_coder.pendelbuddy.core.MyTrip
 import io.github.slop_coder.pendelbuddy.core.ForecastCheck
@@ -290,6 +291,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dropTrip() {
         viewModelScope.launch { backend.dropTrip() }
+    }
+
+    /** Testing: made-up delays and cancellations on your trip; null clears them. */
+    fun setFake(fake: Fake?) {
+        viewModelScope.launch {
+            backend.setFake(fake)
+            render()
+        }
     }
 
     fun pullToRefreshMyTrip() {

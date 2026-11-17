@@ -17,6 +17,10 @@ data class MyTrip(
     val found: Boolean = true,
     /** [Change.key]s already announced, so each change is notified once. */
     val alerted: Set<String> = emptySet(),
+    /** Made-up changes for testing the alerts (Settings → Testing); null = real data only. */
+    val fake: Fake? = null,
+    /** With [fake] on: the trip as downloaded, without the made-up changes. */
+    val real: Trip? = null,
 ) {
     val route get() = Route(from, to, direction)
 
@@ -57,5 +61,37 @@ object MyTrips {
             sameDay.firstOrNull { t -> t.trains.map { it.trainNumber } == numbers }?.let { return it }
         }
         return sameDay.firstOrNull { it.key == old.key }
+    }
+}
+
+/** Made-up changes to your trip, for trying out the alerts: put on top of every download until cleared. */
+@Serializable
+data class Fake(
+    /** Minutes late, leaving and arriving, for the first train. */
+    val delay: Int = 0,
+    val cancelFirst: Boolean = false,
+    /** The first train leaves from another platform than planned. */
+    val newPlatform: Boolean = false,
+    /** The first train does not stop where you get off. */
+    val skipExit: Boolean = false,
+    /** The trip is no longer in the timetable. */
+    val gone: Boolean = false,
+) {
+    val any get() = this != Fake()
+
+    fun applyTo(t: Trip): Trip {
+        val first = t.legs.indexOfFirst { !it.walk }.takeIf { it >= 0 } ?: return t
+        val legs = t.legs.toMutableList()
+        var l = legs[first]
+        if (delay > 0) l = l.copy(departureDelay = delay, arrivalDelay = delay)
+        if (newPlatform) {
+            val planned = l.plannedPlatform ?: l.platform ?: "1"
+            l = l.copy(plannedPlatform = planned, platform = planned.toIntOrNull()?.plus(1)?.toString() ?: "${planned}A")
+        }
+        if (cancelFirst) l = l.copy(cancelled = true)
+        if (skipExit) l = l.copy(cancelled = true, alightSkipped = true)
+        legs[first] = l
+        val trains = legs.filter { !it.walk }
+        return t.copy(legs = legs, departureDelay = trains.first().departureDelay, arrivalDelay = trains.last().arrivalDelay)
     }
 }

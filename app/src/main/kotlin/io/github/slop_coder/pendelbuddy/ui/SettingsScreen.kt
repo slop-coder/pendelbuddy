@@ -46,6 +46,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -75,6 +76,7 @@ import com.journeyapps.barcodescanner.ScanOptions
 import io.github.slop_coder.pendelbuddy.core.Buffer
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
+import io.github.slop_coder.pendelbuddy.core.Fake
 import io.github.slop_coder.pendelbuddy.core.ShortNames
 import io.github.slop_coder.pendelbuddy.core.Station
 import io.github.slop_coder.pendelbuddy.core.TravelClass
@@ -245,6 +247,7 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, 
                 leadingContent = { Icon(Icons.Filled.BugReport, null) },
                 modifier = Modifier.clickable(onClick = onRequestLog),
             )
+            status.myTrip?.let { mine -> Testing(vm, mine.fake ?: Fake()) }
 
             Spacer(Modifier.size(24.dp))
             Text(
@@ -477,6 +480,48 @@ private fun ShortNameDialog(st: Station, onSave: (String?) -> Unit, onDismiss: (
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         },
+    )
+}
+
+/**
+ * Made-up delays and cancellations on your trip, to try the alerts. Each change takes effect at once and stays on
+ * every download until switched off.
+ */
+@Composable
+private fun Testing(vm: MainViewModel, f: Fake) {
+    Header("Testing")
+    Text(
+        "Fake changes to your trip, to try the alerts. They stay on every download until you switch them off.",
+        Modifier.padding(horizontal = 16.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Text("First train late", Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp), style = MaterialTheme.typography.bodyLarge)
+    val delays = listOf(0, 5, 10, 20)
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        delays.forEachIndexed { i, d ->
+            SegmentedButton(
+                selected = f.delay == d,
+                onClick = { vm.setFake(f.copy(delay = d)) },
+                shape = SegmentedButtonDefaults.itemShape(i, delays.size),
+            ) { Text(if (d == 0) "On time" else "+$d min") }
+        }
+    }
+    FakeSwitch("First train cancelled", f.cancelFirst) { vm.setFake(f.copy(cancelFirst = it)) }
+    FakeSwitch("New platform for the first train", f.newPlatform) { vm.setFake(f.copy(newPlatform = it)) }
+    FakeSwitch("First train does not stop where you get off", f.skipExit) { vm.setFake(f.copy(skipExit = it)) }
+    FakeSwitch("Trip gone from the timetable", f.gone) { vm.setFake(f.copy(gone = it)) }
+    if (f.any) {
+        TextButton(onClick = { vm.setFake(null) }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Clear all and download again") }
+    }
+}
+
+@Composable
+private fun FakeSwitch(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    ListItem(
+        headlineContent = { Text(label) },
+        trailingContent = { Switch(checked = on, onCheckedChange = onChange) },
+        modifier = Modifier.clickable { onChange(!on) },
     )
 }
 

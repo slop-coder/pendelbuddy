@@ -57,6 +57,14 @@ fun MyTripScreen(vm: MainViewModel, st: CommuteState) {
                     )
                     return@Column
                 }
+                if (mine.fake != null) {
+                    Text(
+                        "Test changes on (Settings → Testing)",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
                 TripBody(vm, st, TripRow(mine.trip, copiedFrom = null, mine = null), mine.fetchedAt, st.changes, missing = !mine.found)
             }
         }
