@@ -108,6 +108,9 @@ data class Leg(
     val cancelled: Boolean = false,
     /** Boarding stop and stops in between, each with the occupancy when leaving it; [capacity] is their worst. */
     val calls: List<Call> = emptyList(),
+    /** OJP's id of this run of the train and its operating day (yyyy-mm-dd), to find it again in a later answer. */
+    val journeyRef: String? = null,
+    val operatingDay: String? = null,
 ) {
     val walk get() = line == null
 

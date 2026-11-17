@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import io.github.slop_coder.pendelbuddy.core.DebugEntry
 import io.github.slop_coder.pendelbuddy.core.Forecast
+import io.github.slop_coder.pendelbuddy.core.MyTrip
 import io.github.slop_coder.pendelbuddy.core.Rating
 import io.github.slop_coder.pendelbuddy.core.RouteCache
 import io.github.slop_coder.pendelbuddy.core.Settings
@@ -30,6 +31,12 @@ class Store(context: Context) {
     suspend fun route(fromId: String, toId: String) =
         read(routeFile(fromId, toId), RouteCache.serializer()) ?: RouteCache(fromId, toId)
     suspend fun saveRoute(r: RouteCache) = write(routeFile(r.fromId, r.toId), RouteCache.serializer(), r)
+
+    /** The trip you take; null = none. */
+    suspend fun myTrip() = read("my-trip.json", MyTrip.serializer())
+    suspend fun saveMyTrip(t: MyTrip?) =
+        if (t == null) withContext(Dispatchers.IO) { File(dir, "my-trip.json").delete(); Unit }
+        else write("my-trip.json", MyTrip.serializer(), t)
 
     /** Forecasts by station id. */
     suspend fun forecasts() = read("forecasts.json", forecastMap).orEmpty()

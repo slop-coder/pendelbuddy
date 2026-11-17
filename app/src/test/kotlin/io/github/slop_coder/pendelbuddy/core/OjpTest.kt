@@ -34,6 +34,7 @@ class OjpTest {
         assertEquals("8599002", ic.toId)
         assertEquals("10809", ic.trainNumber)
         assertEquals("Endhausen", ic.direction)
+        assertEquals("ch:1:sjyid:100001:10809-001", ic.journeyRef)
         // Talwil → Mittelberg: 1st many, 2nd standing; Mittelberg → Musterdorf: 1st few, 2nd many. The fullest counts.
         assertEquals(Capacity(2, 3), ic.capacity)
         assertEquals(listOf("Talwil", "Mittelberg"), ic.calls.map { it.name })

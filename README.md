@@ -10,6 +10,9 @@ home in the afternoon: leave time, arrival, changes, platform, delays and how fu
   (fastest shown) to red (slowest).
 - **I'm at…**: pick the station you are at (home, a station in between such as a breakfast stop, work, or any other)
   to see the trips from there. Picking the destination plans the trip back.
+- **My trip**: tap "I take this" on a trip to follow it in its own tab. It is downloaded again every 5 minutes
+  while the app is open (from 10 minutes before leaving until you arrive) or when you pull down, and says how old the
+  data is.
 - **Fullness**: the occupancy forecast for your class (1st/2nd) where the timetable has one, plus your own ratings:
   tap a trip and rate a train from 10% (almost empty) to 110% (no seats, many standing). Your average for that train on
   the same kind of day is shown on later trips.
@@ -17,6 +20,7 @@ home in the afternoon: leave time, arrival, changes, platform, delays and how fu
   saved trips, or the timetable of the same weekday from an earlier week. Delays are hidden after 10 minutes, occupancy
   after 12 hours or on a copied timetable, weather after 3 hours. Data from before the December timetable change is
   never used.
+- **Request log**: in Settings, every request that went to the network, with why and what came back.
 
 ## Data
 

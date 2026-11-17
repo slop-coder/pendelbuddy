@@ -1,15 +1,19 @@
 package io.github.slop_coder.pendelbuddy.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,10 +30,11 @@ import java.time.format.DateTimeFormatter
 
 private val HMS = DateTimeFormatter.ofPattern("HH:mm:ss")
 
-/** Every request that was not answered from saved data: when, what, why, and what came back. */
+/** Every request that was not answered from saved data: when, what, why, and what came back. Opened from Settings. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DebugScreen(vm: MainViewModel, st: CommuteState) {
+fun DebugScreen(vm: MainViewModel, st: CommuteState, onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
     val today = st.now.toSwiss().toLocalDate()
     val todays = st.debugLog.count { (it.time / 1000).toSwiss().toLocalDate() == today }
     Scaffold(
@@ -41,10 +46,10 @@ fun DebugScreen(vm: MainViewModel, st: CommuteState) {
                         Text("$todays today · last ${st.debugLog.size} kept", style = MaterialTheme.typography.bodySmall)
                     }
                 },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = { TextButton(onClick = vm::clearDebugLog, enabled = st.debugLog.isNotEmpty()) { Text("Clear") } },
             )
         },
-        contentWindowInsets = WindowInsets(0),
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize()) {
             if (st.debugLog.isEmpty()) {

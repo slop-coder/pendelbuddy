@@ -13,6 +13,7 @@ import io.github.slop_coder.pendelbuddy.core.Forecast
 import io.github.slop_coder.pendelbuddy.core.Freshness
 import io.github.slop_coder.pendelbuddy.core.LOOK_BACK
 import io.github.slop_coder.pendelbuddy.core.Leg
+import io.github.slop_coder.pendelbuddy.core.MyTrip
 import io.github.slop_coder.pendelbuddy.core.ForecastCheck
 import io.github.slop_coder.pendelbuddy.core.Rating
 import io.github.slop_coder.pendelbuddy.core.Ratings
@@ -95,7 +96,12 @@ data class CommuteState(
     /** Number of ratings saved, and how they compare with the forecast. */
     val ratingCount: Int = 0,
     val forecastChecks: List<ForecastCheck> = emptyList(),
-)
+    /** The trip you take ("I take this"), as last downloaded. */
+    val myTrip: MyTrip? = null,
+    val myTripLoading: Boolean = false,
+) {
+    fun isMyTrip(t: Trip) = myTrip?.trip?.let { it.key == t.key && it.serviceDate == t.serviceDate } == true
+}
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val store = Store(app)
@@ -128,9 +134,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ratings = store.ratings()
             forecasts = store.forecasts()
             debugLog = store.debugLog()
+            val mine = store.myTrip()?.takeIf { !it.over(nowSec()) }
             _state.update { it.copy(debugLog = debugLog) }
             val keySet = withContext(Dispatchers.IO) { secrets.hasOjpKey() }
-            _state.update { it.copy(settings = store.settings(), loaded = true, ojpKeySet = keySet) }
+            _state.update { it.copy(settings = store.settings(), loaded = true, ojpKeySet = keySet, myTrip = mine) }
             updateRatingStats()
             openedApp()
         }
@@ -142,6 +149,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             // What is on screen first, then the weather and the commute in the background.
             refresh(cause = "Opened app")
+            refreshMyTrip(cause = "Opened app")
             updateWeather(force = true, cause = "Opened app")
             val today = nowSec().toSwiss().toLocalDate()
             prefetch(Commute.weekDays(today), force = setOf(today, today.plusDays(1)))
@@ -150,7 +158,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * The app was opened or reopened: download once, then only keep the clock running (trains that left drop
-     * off the list, old delays are hidden). No more downloads until reopening or pull-to-refresh.
+     * off the list, old delays are hidden). No more downloads until reopening or pull-to-refresh, except for
+     * your trip, every 5 minutes.
      */
     fun start() {
         if (_state.value.loaded) openedApp()
@@ -158,7 +167,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ticker = viewModelScope.launch {
             while (isActive) {
                 delay(30_000)
-                if (_state.value.loaded) render()
+                if (!_state.value.loaded) continue
+                render()
+                refreshMyTrip(cause = "Every 5 min", onlyIfDue = true)
             }
         }
     }
@@ -257,6 +268,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             refresh(force = true, cause = "Pull to refresh")
             updateWeather(force = true, cause = "Pull to refresh")
         }
+    }
+
+    /** "I take this": [row] becomes your trip, watched until you arrive. */
+    fun takeTrip(row: TripRow) {
+        val route = _state.value.route ?: return
+        val mine = MyTrip(row.trip, route.from, route.to, route.direction, fetchedAt = _state.value.liveAt ?: 0)
+        _state.update { it.copy(myTrip = mine) }
+        viewModelScope.launch {
+            store.saveMyTrip(mine)
+            refreshMyTrip(cause = "Took trip")
+        }
+    }
+
+    fun dropTrip() {
+        _state.update { it.copy(myTrip = null) }
+        viewModelScope.launch { store.saveMyTrip(null) }
+    }
+
+    fun pullToRefreshMyTrip() {
+        viewModelScope.launch { refreshMyTrip(cause = "Pull to refresh") }
+    }
+
+    /**
+     * Asks for your trip again: the same route from shortly before it leaves, and the same trains picked out of
+     * the answer. [onlyIfDue]: only when the last download is 5 minutes old and the trip is close or under way.
+     */
+    private suspend fun refreshMyTrip(cause: String, onlyIfDue: Boolean = false) {
+        val now = nowSec()
+        val mine = _state.value.myTrip ?: return
+        if (mine.over(now)) return dropTrip()
+        if (onlyIfDue && !mine.dueForRefresh(now)) return
+        if (mine.arrived(now)) return
+        _state.update { it.copy(myTripLoading = true) }
+        try {
+            val fresh = fetchLock.withLock { plan(mine.route, mine.trip.departure - LOOK_BACK, limit = 4, "$cause, my trip") }
+            store.saveRoute(store.route(mine.from.id, mine.to.id).merge(fresh, now))
+            val found = mine.findIn(fresh)
+            // Not in the answer: keep showing the last known version, marked as missing.
+            val updated = mine.copy(trip = found ?: mine.trip, fetchedAt = now, found = found != null)
+            // Dropped or replaced while downloading: keep what you chose.
+            if (_state.value.myTrip?.trip?.key != mine.trip.key) return
+            _state.update { it.copy(myTrip = updated) }
+            store.saveMyTrip(updated)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Offline: the My trip tab shows how old the data is.
+            Log.w(TAG, "My trip download failed", e)
+        } finally {
+            _state.update { it.copy(myTripLoading = false) }
+        }
+        render()
     }
 
     /** Saves a rating of [leg] together with the forecast it showed; earlier ratings are kept for analysis. */

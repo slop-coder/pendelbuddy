@@ -21,6 +21,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
@@ -31,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -50,25 +53,25 @@ import io.github.slop_coder.pendelbuddy.core.Leg
 import io.github.slop_coder.pendelbuddy.core.Ratings
 import io.github.slop_coder.pendelbuddy.core.SWISS
 import io.github.slop_coder.pendelbuddy.core.TravelClass
+import io.github.slop_coder.pendelbuddy.core.Trip
 import io.github.slop_coder.pendelbuddy.core.toSwiss
 import java.time.LocalDate
 import kotlin.math.roundToInt
 
-/** Everything about one trip, train by train, each with a bar to rate how full it is. */
+/**
+ * Everything about one trip, train by train, each with a bar to rate how full it is. The trip is looked up in the
+ * list on every update, so delays and platforms stay current while it is open.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TripScreen(vm: MainViewModel, row: TripRow, cls: TravelClass, onBack: () -> Unit) {
+fun TripScreen(vm: MainViewModel, st: CommuteState, row: TripRow, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
-    val t = row.trip
+    val live = st.rows.firstOrNull { it.trip.key == row.trip.key && it.trip.serviceDate == row.trip.serviceDate } ?: row
+    val t = live.trip
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("${t.legs.first().fromName} → ${t.legs.last().toName}", style = MaterialTheme.typography.titleMedium)
-                        Text(day(t.serviceDate), style = MaterialTheme.typography.bodySmall)
-                    }
-                },
+                title = { TripTitle(t) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
             )
         },
@@ -78,25 +81,59 @@ fun TripScreen(vm: MainViewModel, row: TripRow, cls: TravelClass, onBack: () -> 
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                "${hm(t.expectedDeparture())} → ${hm(t.expectedArrival())} · ${duration(t.arrival - t.departure)} · " +
-                    if (t.transfers == 0) "direct" else "${t.transfers} change${if (t.transfers > 1) "s" else ""}",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
-            row.copiedFrom?.let {
-                Text(
-                    "Offline: timetable of ${day(it)}, without delays or occupancy",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
+            TripSummary(t)
+            if (st.isMyTrip(t)) {
+                OutlinedButton(onClick = vm::dropTrip, modifier = Modifier.padding(horizontal = 4.dp)) {
+                    Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Your trip · stop watching")
+                }
+            } else {
+                FilledTonalButton(onClick = { vm.takeTrip(live) }, modifier = Modifier.padding(horizontal = 4.dp)) {
+                    Icon(Icons.Filled.ConfirmationNumber, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (st.myTrip == null) "I take this" else "I take this instead")
+                }
             }
-            for (leg in t.legs) {
-                val earlier = if (leg == t.trains.firstOrNull()) row.earlier else emptyList()
-                if (leg.walk) WalkRow(leg) else TrainCard(vm, leg, cls, canRate = row.copiedFrom == null, earlier = earlier)
-            }
+            TripDetails(vm, live, st.settings.travelClass)
         }
+    }
+}
+
+@Composable
+fun TripTitle(t: Trip) {
+    Column {
+        Text("${t.legs.first().fromName} → ${t.legs.last().toName}", style = MaterialTheme.typography.titleMedium)
+        Text(day(t.serviceDate), style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** Leave and arrival time, travel time and changes. */
+@Composable
+fun TripSummary(t: Trip) {
+    Text(
+        "${hm(t.expectedDeparture())} → ${hm(t.expectedArrival())} · ${duration(t.arrival - t.departure)} · " +
+            if (t.transfers == 0) "direct" else "${t.transfers} change${if (t.transfers > 1) "s" else ""}",
+        style = MaterialTheme.typography.titleLarge,
+        modifier = Modifier.padding(horizontal = 4.dp),
+    )
+}
+
+/** The trains and changes of a trip, for the trip screen and My trip. */
+@Composable
+fun TripDetails(vm: MainViewModel, row: TripRow, cls: TravelClass) {
+    val t = row.trip
+    row.copiedFrom?.let {
+        Text(
+            "Offline: timetable of ${day(it)}, without delays or occupancy",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    }
+    for (leg in t.legs) {
+        val earlier = if (leg == t.trains.firstOrNull()) row.earlier else emptyList()
+        if (leg.walk) WalkRow(leg) else TrainCard(vm, leg, cls, canRate = row.copiedFrom == null, earlier = earlier)
     }
 }
 

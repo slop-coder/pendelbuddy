@@ -128,6 +128,8 @@ object Ojp {
             cancelled = service?.child("Cancelled")?.textContent?.trim() == "true" ||
                 listOf(board, alight).any { it.child("NotServicedStop")?.textContent?.trim() == "true" },
             calls = calls,
+            journeyRef = service?.child("JourneyRef")?.textContent?.trim()?.takeIf { it.isNotEmpty() },
+            operatingDay = service?.child("OperatingDayRef")?.textContent?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 

@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
@@ -77,6 +78,7 @@ import io.github.slop_coder.pendelbuddy.core.Direction
 import io.github.slop_coder.pendelbuddy.core.ShortNames
 import io.github.slop_coder.pendelbuddy.core.Station
 import io.github.slop_coder.pendelbuddy.core.TravelClass
+import io.github.slop_coder.pendelbuddy.core.toSwiss
 import java.time.LocalDate
 
 private enum class Pick { HOME, WORK, VIA }
@@ -87,7 +89,7 @@ private fun clock(minute: Int) = "%02d:%02d".format(minute / 60, minute % 60)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) {
+fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, onRequestLog: () -> Unit) {
     val initial = status.settings
     var s by remember { mutableStateOf(initial) }
     var picking by remember { mutableStateOf<Pick?>(null) }
@@ -232,6 +234,16 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit) 
                     if (status.ojpKeySet) TextButton(onClick = { vm.setOjpKey(null) }) { Text("Remove") }
                     else TextButton(onClick = { keyDialog = true }) { Text("Paste") }
                 },
+            )
+
+            val today = status.now.toSwiss().toLocalDate()
+            ListItem(
+                headlineContent = { Text("Request log") },
+                supportingContent = {
+                    Text("${status.debugLog.count { (it.time / 1000).toSwiss().toLocalDate() == today }} requests today")
+                },
+                leadingContent = { Icon(Icons.Filled.BugReport, null) },
+                modifier = Modifier.clickable(onClick = onRequestLog),
             )
 
             Spacer(Modifier.size(24.dp))
