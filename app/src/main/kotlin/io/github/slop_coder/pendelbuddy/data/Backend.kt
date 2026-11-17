@@ -154,7 +154,7 @@ class Backend private constructor(context: Context) {
      * log says how it went. For writing the train map's parser.
      */
     suspend fun downloadFormation(leg: Leg) {
-        val key = withContext(Dispatchers.IO) { secrets.ojpKey() } ?: return
+        val key = withContext(Dispatchers.IO) { secrets.get(ApiKey.FORMATION) } ?: return
         val number = leg.trainNumber ?: return
         val date = leg.operatingDay ?: leg.departure.toSwiss().toLocalDate().toString()
         try {

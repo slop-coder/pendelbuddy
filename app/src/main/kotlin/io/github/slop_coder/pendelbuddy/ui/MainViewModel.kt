@@ -33,6 +33,7 @@ import io.github.slop_coder.pendelbuddy.core.project
 import io.github.slop_coder.pendelbuddy.core.toSwiss
 import io.github.slop_coder.pendelbuddy.core.upcoming
 import io.github.slop_coder.pendelbuddy.data.Alerts
+import io.github.slop_coder.pendelbuddy.data.ApiKey
 import io.github.slop_coder.pendelbuddy.data.Backend
 import io.github.slop_coder.pendelbuddy.data.TripWatch
 import io.github.slop_coder.pendelbuddy.data.TransportClient
@@ -84,6 +85,8 @@ data class CommuteState(
     val now: Long = System.currentTimeMillis() / 1000,
     /** An OJP key is saved (the key itself never leaves [Secrets]). */
     val ojpKeySet: Boolean = false,
+    /** A key for the train formation service is saved. */
+    val formationKeySet: Boolean = false,
     /** Where the last timetable came from, or what went wrong with OJP. */
     val source: String? = null,
     val ojpProblem: String? = null,
@@ -145,7 +148,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             forecasts = store.forecasts()
             backend.load()
             val keySet = withContext(Dispatchers.IO) { secrets.hasOjpKey() }
-            _state.update { it.copy(settings = store.settings(), loaded = true, ojpKeySet = keySet) }
+            val formationSet = withContext(Dispatchers.IO) { secrets.has(ApiKey.FORMATION) }
+            _state.update { it.copy(settings = store.settings(), loaded = true, ojpKeySet = keySet, formationKeySet = formationSet) }
             updateRatingStats()
             openedApp()
         }
@@ -222,6 +226,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves (or with null/blank removes) the OJP key and tries it right away. */
+    /** Saves (or with null removes) the train formation service's key. */
+    fun setFormationKey(key: String?) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { secrets.set(ApiKey.FORMATION, key) }
+            val set = withContext(Dispatchers.IO) { secrets.has(ApiKey.FORMATION) }
+            _state.update { it.copy(formationKeySet = set) }
+        }
+    }
+
     fun setOjpKey(key: String?) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { secrets.setOjpKey(key) }

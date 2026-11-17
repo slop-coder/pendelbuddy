@@ -10,16 +10,26 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+/** The API keys: opentransportdata.swiss gives each API its own. */
+enum class ApiKey(val file: String) { OJP("ojp-key.bin"), FORMATION("formation-key.bin") }
+
 /**
- * The OJP API key. It is stored encrypted with an AES key that lives in the Android Keystore and cannot be
- * exported, in noBackupFilesDir (left out of backups and device transfers). It is never logged or shown again.
+ * The API keys. They are stored encrypted with an AES key that lives in the Android Keystore and cannot be
+ * exported, in noBackupFilesDir (left out of backups and device transfers). They are never logged or shown again.
  */
 class Secrets(context: Context) {
-    private val file = File(context.noBackupFilesDir, "ojp-key.bin")
+    private val dir = context.noBackupFilesDir
 
-    fun hasOjpKey() = file.exists()
+    fun has(k: ApiKey) = File(dir, k.file).exists()
 
-    fun ojpKey(): String? = try {
+    fun hasOjpKey() = has(ApiKey.OJP)
+
+    fun ojpKey() = get(ApiKey.OJP)
+
+    fun setOjpKey(key: String?) = set(ApiKey.OJP, key)
+
+    fun get(k: ApiKey): String? = try {
+        val file = File(dir, k.file)
         val bytes = file.takeIf { it.exists() }?.readBytes() ?: return null
         val iv = bytes.copyOfRange(1, 1 + bytes[0])
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -27,11 +37,12 @@ class Secrets(context: Context) {
         String(cipher.doFinal(bytes, 1 + iv.size, bytes.size - 1 - iv.size), Charsets.UTF_8)
     } catch (e: Exception) {
         // E.g. the Keystore key was lost after a restore: the user has to paste the key again.
-        file.delete()
+        File(dir, k.file).delete()
         null
     }
 
-    fun setOjpKey(key: String?) {
+    fun set(which: ApiKey, key: String?) {
+        val file = File(dir, which.file)
         val k = key?.trim()?.removePrefix("Bearer ")?.trim()
         if (k.isNullOrEmpty()) {
             file.delete()

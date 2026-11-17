@@ -74,6 +74,7 @@ import com.journeyapps.barcodescanner.CaptureActivity
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import io.github.slop_coder.pendelbuddy.core.Buffer
+import io.github.slop_coder.pendelbuddy.data.ApiKey
 import io.github.slop_coder.pendelbuddy.core.Commute
 import io.github.slop_coder.pendelbuddy.core.Direction
 import io.github.slop_coder.pendelbuddy.core.Fake
@@ -97,7 +98,8 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, 
     var picking by remember { mutableStateOf<Pick?>(null) }
     /** Which time is being picked: the switch to trips home, or the morning / evening button. */
     var timeDialog by remember { mutableStateOf<TimeSetting?>(null) }
-    var keyDialog by remember { mutableStateOf(false) }
+    /** Which key is being pasted, if any. */
+    var keyDialog by remember { mutableStateOf<ApiKey?>(null) }
     var bufferDialog by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Station?>(null) }
     // Changes are saved when you leave the tab (or, on first setup, as soon as home and work are set).
@@ -234,7 +236,21 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, 
                 leadingContent = { Icon(Icons.Filled.Key, null) },
                 trailingContent = {
                     if (status.ojpKeySet) TextButton(onClick = { vm.setOjpKey(null) }) { Text("Remove") }
-                    else TextButton(onClick = { keyDialog = true }) { Text("Paste") }
+                    else TextButton(onClick = { keyDialog = ApiKey.OJP }) { Text("Paste") }
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Train formation API key") },
+                supportingContent = {
+                    Text(
+                        if (status.formationKeySet) "Saved (encrypted, never shown again)"
+                        else "Not set: no train map. A separate key from the API Manager (Train Formation Service)"
+                    )
+                },
+                leadingContent = { Icon(Icons.Filled.Key, null) },
+                trailingContent = {
+                    if (status.formationKeySet) TextButton(onClick = { vm.setFormationKey(null) }) { Text("Remove") }
+                    else TextButton(onClick = { keyDialog = ApiKey.FORMATION }) { Text("Paste") }
                 },
             )
 
@@ -288,7 +304,13 @@ fun SettingsScreen(vm: MainViewModel, status: CommuteState, onDone: () -> Unit, 
             onDismiss = { bufferDialog = false },
         )
     }
-    if (keyDialog) KeyDialog(onSave = { vm.setOjpKey(it); keyDialog = false }, onDismiss = { keyDialog = false })
+    keyDialog?.let { which ->
+        KeyDialog(
+            title = if (which == ApiKey.OJP) "OJP 2.0 API key" else "Train formation API key",
+            onSave = { if (which == ApiKey.OJP) vm.setOjpKey(it) else vm.setFormationKey(it); keyDialog = null },
+            onDismiss = { keyDialog = null },
+        )
+    }
     timeDialog?.let { which ->
         val current = when (which) {
             TimeSetting.SWITCH -> s.switchMinute
@@ -380,7 +402,7 @@ class SecureScanActivity : CaptureActivity() {
  * (ZXing, works without Google Play services). A scanned key is saved without being shown.
  */
 @Composable
-private fun KeyDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) {
+private fun KeyDialog(title: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
     var key by remember { mutableStateOf("") }
     var scanError by remember { mutableStateOf<String?>(null) }
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -398,7 +420,7 @@ private fun KeyDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) {
         scanner.launch(
             ScanOptions()
                 .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                .setPrompt("Scan the QR code of your OJP key")
+                .setPrompt("Scan the QR code of your key")
                 .setBeepEnabled(false)
                 .setOrientationLocked(false)
                 .setCaptureActivity(SecureScanActivity::class.java)
@@ -407,7 +429,7 @@ private fun KeyDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
-        title = { Text("OJP 2.0 API key") },
+        title = { Text(title) },
         text = {
             Column {
                 Text(
