@@ -41,13 +41,20 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 fun MainScreen(vm: MainViewModel) {
     val st by vm.state.collectAsState()
     var tab by rememberSaveable { mutableStateOf(Tab.TRIPS) }
+    /** Tabs visited before, the last one on top: Back goes there. */
+    var history by rememberSaveable { mutableStateOf(listOf<Tab>()) }
+    fun go(t: Tab) {
+        if (t == tab) return
+        history = (history + tab).takeLast(10)
+        tab = t
+    }
     var trip by remember { mutableStateOf<TripRow?>(null) }
     var requestLog by rememberSaveable { mutableStateOf(false) }
     val saved = rememberSaveableStateHolder()
     // Opened from a notification: to your trip, or to the trips instead of it.
     LaunchedEffect(st.jumps) {
         if (st.jumps == 0) return@LaunchedEffect
-        tab = if (st.jumpTo == Alerts.OPEN_MY_TRIP) Tab.MY_TRIP else Tab.TRIPS
+        go(if (st.jumpTo == Alerts.OPEN_MY_TRIP) Tab.MY_TRIP else Tab.TRIPS)
         trip = null
         requestLog = false
     }
@@ -62,7 +69,12 @@ fun MainScreen(vm: MainViewModel) {
         tab !in tabs -> Tab.TRIPS
         else -> tab
     }
-    BackHandler(enabled = current != Tab.TRIPS && st.settings.complete) { tab = Tab.TRIPS }
+    // Back: to the tab you came from (skipping My trip once it is gone); with none left, the app closes.
+    val back = history.lastOrNull { it in tabs && it != current }
+    BackHandler(enabled = back != null && st.settings.complete) {
+        history = history.dropLast(history.size - history.lastIndexOf(back))
+        tab = back!!
+    }
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -70,7 +82,7 @@ fun MainScreen(vm: MainViewModel) {
                     NavigationBarItem(
                         selected = current == t,
                         // Tapping the tab you are on goes back to its start (closes the trip or the request log).
-                        onClick = { if (t == current) { trip = null; requestLog = false }; tab = t },
+                        onClick = { if (t == current) { trip = null; requestLog = false }; go(t) },
                         icon = { Icon(t.icon, null) },
                         label = { Text(t.label) },
                         enabled = st.settings.complete || t == Tab.SETTINGS,
@@ -89,11 +101,11 @@ fun MainScreen(vm: MainViewModel) {
             saved.SaveableStateProvider(screen) {
                 when (current) {
                     Tab.TRIPS -> trip?.let { TripScreen(vm, st, it, onBack = { trip = null }) }
-                        ?: CommuteScreen(vm, st, onTrip = { trip = it }, onMyTrip = { tab = Tab.MY_TRIP })
+                        ?: CommuteScreen(vm, st, onTrip = { trip = it }, onMyTrip = { go(Tab.MY_TRIP) })
                     Tab.MY_TRIP -> MyTripScreen(vm, st)
                     Tab.RATINGS -> RatingsScreen(vm, st)
                     Tab.SETTINGS -> if (requestLog) DebugScreen(vm, st, onBack = { requestLog = false })
-                        else SettingsScreen(vm, st, onDone = { tab = Tab.TRIPS }, onRequestLog = { requestLog = true })
+                        else SettingsScreen(vm, st, onDone = { go(Tab.TRIPS) }, onRequestLog = { requestLog = true })
                 }
             }
         }
