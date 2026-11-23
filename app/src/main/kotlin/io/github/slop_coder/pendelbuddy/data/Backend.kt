@@ -30,6 +30,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.net.UnknownHostException
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -150,8 +151,12 @@ class Backend private constructor(context: Context) {
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: IOException) {
+            } catch (e: UnknownHostException) {
                 throw e // offline: transport.opendata.ch will not work either
+            } catch (e: IOException) {
+                // OJP slow or unreachable (a timeout, a dropped connection) while the network works: try the other one.
+                Log.w(TAG, "OJP not reachable: ${e.javaClass.simpleName}")
+                _source.update { it.copy(ojpProblem = "OJP not reachable (${e.javaClass.simpleName})") }
             } catch (e: Exception) {
                 Log.w(TAG, "OJP answer not understood", e)
                 _source.update { it.copy(ojpProblem = "OJP answer not understood: ${e.message?.take(120)}") }
