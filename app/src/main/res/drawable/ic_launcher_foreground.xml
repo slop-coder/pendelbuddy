@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- white train front with two windows and lights, on the safe zone -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M40,30 L68,30 Q76,30 76,38 L76,68 Q76,74 70,74 L38,74 Q32,74 32,68 L32,38 Q32,30 40,30 Z" />
+    <path android:fillColor="#EB0000"
+        android:pathData="M37,38 L52,38 L52,52 L37,52 Z M56,38 L71,38 L71,52 L56,52 Z" />
+    <path android:fillColor="#EB0000"
+        android:pathData="M41,63 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M67,63 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M36,74 L42,74 L36,82 L30,82 Z M66,74 L72,74 L78,82 L72,82 Z" />
+</vector>

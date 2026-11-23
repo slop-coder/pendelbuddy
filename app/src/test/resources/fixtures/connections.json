@@ -1,0 +1,34 @@
+{
+  "connections": [
+    {
+      "from": {"station": {"id": "8599002", "name": "Musterdorf", "coordinate": {"type": "WGS84", "x": 46.81, "y": 7.21}},
+               "departureTimestamp": 1794812520, "delay": 3, "platform": "7"},
+      "to": {"station": {"id": "8599003", "name": "Beispielstadt", "coordinate": {"type": "WGS84", "x": 47.12, "y": 8.02}},
+             "arrivalTimestamp": 1794815880, "delay": 2, "platform": "33"},
+      "transfers": 0,
+      "capacity1st": null, "capacity2nd": null,
+      "sections": [
+        {"journey": {"name": "000708", "category": "IC", "number": "8", "to": "Endhausen", "capacity1st": 1, "capacity2nd": "3"},
+         "walk": null,
+         "departure": {"station": {"id": "8599002", "name": "Musterdorf"}, "departureTimestamp": 1794812520, "delay": 3, "platform": "7"},
+         "arrival": {"station": {"id": "8599003", "name": "Beispielstadt"}, "arrivalTimestamp": 1794815880, "delay": 2, "platform": "33"}}
+      ]
+    },
+    {
+      "from": {"station": {"id": "8599002", "name": "Musterdorf"}, "departureTimestamp": 1794813000, "delay": null, "platform": "4"},
+      "to": {"station": {"id": "8599003", "name": "Beispielstadt"}, "arrivalTimestamp": 1794818400, "delay": null},
+      "transfers": 1,
+      "sections": [
+        {"journey": {"name": "002110", "category": "IC", "number": "002110", "to": "Beispielstadt", "capacity1st": "-1", "capacity2nd": null},
+         "departure": {"station": {"id": "8599002", "name": "Musterdorf"}, "departureTimestamp": 1794813000, "delay": null, "platform": "4"},
+         "arrival": {"station": {"id": "8599007", "name": "Zwischenau"}, "arrivalTimestamp": 1794815400}},
+        {"journey": null, "walk": {"duration": 180},
+         "departure": {"station": {"id": "8599007", "name": "Zwischenau"}, "departureTimestamp": null},
+         "arrival": {"station": {"id": "8599007", "name": "Zwischenau"}, "arrivalTimestamp": 1794815400}},
+        {"journey": {"name": "018156", "category": "S", "number": "29", "to": "Beispielstadt", "capacity1st": null, "capacity2nd": 2},
+         "departure": {"station": {"id": "8599007", "name": "Zwischenau"}, "departureTimestamp": 1794815700, "platform": "12"},
+         "arrival": {"station": {"id": "8599003", "name": "Beispielstadt"}, "arrivalTimestamp": 1794818400}}
+      ]
+    }
+  ]
+}
