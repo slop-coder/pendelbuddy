@@ -174,6 +174,14 @@ data class Leg(
     fun expectedDeparture() = departure + 60L * (departureDelay ?: 0)
     fun expectedArrival() = arrival + 60L * (arrivalDelay ?: 0)
 
+    /** Copy without delays and platform changes: back to the planned platforms where the answer named them. */
+    fun withoutDelays() = copy(
+        departureDelay = null,
+        arrivalDelay = null,
+        platform = plannedPlatform ?: platform,
+        arrivalPlatform = plannedArrivalPlatform ?: arrivalPlatform,
+    )
+
     /** Identifies "the same train" across days: line, boarding station and scheduled time of day. */
     val trainKey get() = line?.let { "$it|$fromId|${departure.toSwiss().toLocalTime()}" }
 }
@@ -213,16 +221,29 @@ data class Trip(
         legs = legs.map { it.copy(departure = it.departure + seconds, arrival = it.arrival + seconds) },
     )
 
-    /** Copy without the realtime and forecast parts, for showing old data. */
-    fun timetableOnly() = copy(
-        departureDelay = null,
-        arrivalDelay = null,
-        legs = legs.map { l ->
-            l.copy(departureDelay = null, capacity = Capacity(), calls = l.calls.map { it.copy(capacity = Capacity()) })
-        },
-    )
+    /** Copy without delays and platform changes, for realtime data that is too old to trust. */
+    fun withoutDelays(): Trip {
+        val l = legs.map { it.withoutDelays() }
+        return copy(
+            departureDelay = null,
+            arrivalDelay = null,
+            platform = l.firstOrNull { !it.walk }?.plannedPlatform ?: platform,
+            legs = l,
+        )
+    }
 
-    fun withoutDelays() = copy(departureDelay = null, arrivalDelay = null, legs = legs.map { it.copy(departureDelay = null, arrivalDelay = null) })
+    /** Copy without the realtime and forecast parts, for showing old data of the same day. */
+    fun timetableOnly() = withoutDelays().let { t ->
+        t.copy(legs = t.legs.map { l -> l.copy(capacity = Capacity(), calls = l.calls.map { it.copy(capacity = Capacity()) }) })
+    }
+
+    /**
+     * Copy for showing on another day: also without that day's cancellations and skipped stops, which only held
+     * for the day it was downloaded for.
+     */
+    fun timetableCopy() = timetableOnly().let { t ->
+        t.copy(legs = t.legs.map { it.copy(cancelled = false, boardSkipped = false, alightSkipped = false) })
+    }
 
     /**
      * Without walks before the first and after the last train: the trip runs from the first departure to the

@@ -117,13 +117,13 @@ fun RouteCache.project(date: LocalDate): List<ShownTrip> {
             else {
                 val start = c.trip.departure.toSwiss()
                 val moved = start.toLocalDateTime().plusDays(ChronoUnit.DAYS.between(d, date)).atZone(SWISS)
-                ShownTrip(c.trip.shifted(moved.toEpochSecond() - start.toEpochSecond()).timetableOnly(), c.fetchedAt, d)
+                ShownTrip(c.trip.shifted(moved.toEpochSecond() - start.toEpochSecond()).timetableCopy(), c.fetchedAt, d)
             }
         }
         .sortedBy { it.trip.departure }
 }
 
-/** Hides delays and occupancy that are too old to trust at [now]. */
+/** Hides delays, platform changes and occupancy that are too old to trust at [now]. */
 fun ShownTrip.atTime(now: Long): ShownTrip {
     if (copiedFrom != null) return this
     val age = now - fetchedAt

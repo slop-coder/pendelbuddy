@@ -46,6 +46,48 @@ class CacheTest {
         assertNull(today.atTime(fetched + 13 * 3600).trip.capacity.second)
     }
 
+    /** Cancelled, 3 min late on arrival, and moved from platform 5 to 7. */
+    private fun disrupted(dep: Long) = Trip(
+        fromId = "A", toId = "B", departure = dep, arrival = dep + 3600, arrivalDelay = 3, platform = "7",
+        legs = listOf(
+            Leg(
+                "IC 8", fromId = "A", fromName = "Aa", toName = "Bb", departure = dep, arrival = dep + 3600,
+                arrivalDelay = 3, platform = "7", plannedPlatform = "5", arrivalPlatform = "2", plannedArrivalPlatform = "1",
+                cancelled = true, alightSkipped = true,
+            ),
+        ),
+    )
+
+    @Test
+    fun copiesDropTheDaysCancellationsAndPlatformChanges() {
+        val cache = RouteCache("A", "B").merge(listOf(disrupted(at(2026, 11, 9, 7, 2))), at(2026, 11, 9, 7, 0))
+        val copy = cache.project(mon16).single().trip
+        val leg = copy.legs.single()
+        assertFalse(copy.cancelled)
+        assertFalse(leg.alightSkipped)
+        assertNull(copy.arrivalDelay)
+        assertNull(leg.arrivalDelay)
+        assertEquals("5", copy.platform)
+        assertEquals("5", leg.platform)
+        assertEquals("1", leg.arrivalPlatform)
+    }
+
+    @Test
+    fun oldRealtimeExpiresButTheDaysCancellationStays() {
+        val fetched = at(2026, 11, 16, 7, 0)
+        val today = RouteCache("A", "B").merge(listOf(disrupted(at(2026, 11, 16, 7, 30))), fetched).project(mon16).single()
+        assertEquals("7", today.atTime(fetched + 60).trip.legs.single().platform)
+        // After 10 minutes the platform change goes with the delays; the cancellation still holds for today.
+        val later = today.atTime(fetched + 20 * 60).trip
+        assertEquals("5", later.legs.single().platform)
+        assertNull(later.arrivalDelay)
+        assertTrue(later.cancelled)
+        // After 12 hours too: the arrival delay does not come back.
+        val old = today.atTime(fetched + 13 * 3600).trip
+        assertNull(old.legs.single().arrivalDelay)
+        assertTrue(old.cancelled)
+    }
+
     @Test
     fun newFetchReplacesCoveredWindowOnly() {
         var cache = RouteCache("A", "B").merge(
