@@ -2,9 +2,15 @@ package io.github.slop_coder.pendelbuddy.data
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
+import android.util.Log
 import java.io.File
+import java.io.IOException
+import java.security.InvalidAlgorithmParameterException
 import java.security.KeyStore
+import java.security.UnrecoverableKeyException
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -28,18 +34,34 @@ class Secrets(context: Context) {
 
     fun setOjpKey(key: String?) = set(ApiKey.OJP, key)
 
-    fun get(k: ApiKey): String? = try {
+    fun get(k: ApiKey): String? {
         val file = File(dir, k.file)
-        val bytes = file.takeIf { it.exists() }?.readBytes() ?: return null
-        val iv = bytes.copyOfRange(1, 1 + bytes[0])
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, keystoreKey(), GCMParameterSpec(128, iv))
-        String(cipher.doFinal(bytes, 1 + iv.size, bytes.size - 1 - iv.size), Charsets.UTF_8)
-    } catch (e: Exception) {
-        // E.g. the Keystore key was lost after a restore: the user has to paste the key again.
-        File(dir, k.file).delete()
+        val bytes = file.readOrNull() ?: return null
+        return try {
+            val iv = bytes.copyOfRange(1, 1 + bytes[0])
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, keystoreKey(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(bytes, 1 + iv.size, bytes.size - 1 - iv.size), Charsets.UTF_8)
+        } catch (e: Exception) {
+            // Only the class is logged, never the key. A key that can never be read again (the Keystore key was
+            // lost after a restore, or the file is damaged) is deleted: the user has to paste it again. A passing
+            // Keystore error keeps it for the next try. Not deleted if a new key was saved meanwhile.
+            Log.w(TAG, "${k.name} key not readable: ${e.javaClass.simpleName}")
+            if (unreadable(e) && file.readOrNull()?.contentEquals(bytes) == true) file.delete()
+            null
+        }
+    }
+
+    private fun File.readOrNull() = try {
+        takeIf { it.exists() }?.readBytes()
+    } catch (e: IOException) {
         null
     }
+
+    /** Errors that come back on every try: wrong Keystore key, or a file that is not what [set] writes. */
+    private fun unreadable(e: Exception) = e is AEADBadTagException || e is UnrecoverableKeyException ||
+        e is KeyPermanentlyInvalidatedException || e is InvalidAlgorithmParameterException ||
+        e is IndexOutOfBoundsException || e is IllegalArgumentException
 
     fun set(which: ApiKey, key: String?) {
         val file = File(dir, which.file)
@@ -73,6 +95,7 @@ class Secrets(context: Context) {
     }
 
     private companion object {
+        const val TAG = "PendelBuddy"
         const val KEYSTORE = "AndroidKeyStore"
         const val ALIAS = "pendelbuddy-ojp"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
