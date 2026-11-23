@@ -9,7 +9,6 @@ import java.io.File
 import java.io.IOException
 import java.security.InvalidAlgorithmParameterException
 import java.security.KeyStore
-import java.security.UnrecoverableKeyException
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -58,10 +57,13 @@ class Secrets(context: Context) {
         null
     }
 
-    /** Errors that come back on every try: wrong Keystore key, or a file that is not what [set] writes. */
-    private fun unreadable(e: Exception) = e is AEADBadTagException || e is UnrecoverableKeyException ||
-        e is KeyPermanentlyInvalidatedException || e is InvalidAlgorithmParameterException ||
-        e is IndexOutOfBoundsException || e is IllegalArgumentException
+    /**
+     * Errors that come back on every try: wrong Keystore key, or a file that is not what [set] writes. A lost
+     * Keystore key shows up as AEADBadTagException ([keystoreKey] makes a new one). Not UnrecoverableKeyException:
+     * Android also uses it for a Keystore daemon that did not answer.
+     */
+    private fun unreadable(e: Exception) = e is AEADBadTagException || e is KeyPermanentlyInvalidatedException ||
+        e is InvalidAlgorithmParameterException || e is IndexOutOfBoundsException || e is IllegalArgumentException
 
     fun set(which: ApiKey, key: String?) {
         val file = File(dir, which.file)
