@@ -66,10 +66,13 @@ enum class DayType { WEEKDAY, SATURDAY, SUNDAY;
 fun timetableChange(year: Int): LocalDate =
     LocalDate.of(year, 12, 1).with(TemporalAdjusters.dayOfWeekInMonth(2, DayOfWeek.SATURDAY)).plusDays(1)
 
-/** True if timetable data from [from] is not valid on [on] because a timetable change lies in between. */
+/**
+ * True if timetable data from [from] is not valid on [on] because a timetable change lies in between, either way
+ * round: [from] may also be a later day (prefetched) copied back onto an earlier one.
+ */
 fun crossesTimetableChange(from: LocalDate, on: LocalDate): Boolean {
-    if (!from.isBefore(on)) return false
-    return (from.year..on.year).any { y -> timetableChange(y).let { it.isAfter(from) && !it.isAfter(on) } }
+    val (early, late) = if (from.isBefore(on)) from to on else on to from
+    return (early.year..late.year).any { y -> timetableChange(y).let { it.isAfter(early) && !it.isAfter(late) } }
 }
 
 /**
@@ -117,13 +120,13 @@ fun RouteCache.project(date: LocalDate): List<ShownTrip> {
             else {
                 val start = c.trip.departure.toSwiss()
                 val moved = start.toLocalDateTime().plusDays(ChronoUnit.DAYS.between(d, date)).atZone(SWISS)
-                ShownTrip(c.trip.shifted(moved.toEpochSecond() - start.toEpochSecond()).timetableOnly(), c.fetchedAt, d)
+                ShownTrip(c.trip.shifted(moved.toEpochSecond() - start.toEpochSecond()).timetableCopy(), c.fetchedAt, d)
             }
         }
         .sortedBy { it.trip.departure }
 }
 
-/** Hides delays and occupancy that are too old to trust at [now]. */
+/** Hides delays, platform changes and occupancy that are too old to trust at [now]. */
 fun ShownTrip.atTime(now: Long): ShownTrip {
     if (copiedFrom != null) return this
     val age = now - fetchedAt
