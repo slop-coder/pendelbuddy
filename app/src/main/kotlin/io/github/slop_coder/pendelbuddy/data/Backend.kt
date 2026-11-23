@@ -186,7 +186,8 @@ class Backend private constructor(context: Context) {
     } catch (e: HttpException) {
         when (e.code) {
             401, 403 -> false
-            in 500..599 -> null
+            // Too many requests or a server error: says nothing about the key.
+            429, in 500..599 -> null
             else -> true // let in, but the question was odd (e.g. an unknown train)
         }
     } catch (e: IOException) {
