@@ -119,6 +119,17 @@ class CacheTest {
     }
 
     @Test
+    fun laterDayIsNotCopiedBackAcrossTheTimetableChange() {
+        assertTrue(crossesTimetableChange(LocalDate.of(2026, 12, 14), LocalDate.of(2026, 12, 10)))
+        assertTrue(crossesTimetableChange(LocalDate.of(2026, 12, 13), LocalDate.of(2026, 12, 12)))
+        assertFalse(crossesTimetableChange(LocalDate.of(2026, 12, 20), LocalDate.of(2026, 12, 13)))
+        // Only Monday 14 December (new timetable) is known: not used for Thursday 10th, but for Thursday 17th.
+        val cache = RouteCache("A", "B").merge(listOf(trip(at(2026, 12, 14, 7, 2))), at(2026, 12, 10, 7, 0))
+        assertTrue(cache.project(LocalDate.of(2026, 12, 10)).isEmpty())
+        assertEquals(1, cache.project(LocalDate.of(2026, 12, 17)).size)
+    }
+
+    @Test
     fun plannedTimeLaterInTheDay() {
         val now = at(2026, 11, 16, 7, 10)
         val cache = RouteCache("A", "B").merge(

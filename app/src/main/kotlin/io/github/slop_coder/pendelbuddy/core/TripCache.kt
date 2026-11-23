@@ -66,10 +66,13 @@ enum class DayType { WEEKDAY, SATURDAY, SUNDAY;
 fun timetableChange(year: Int): LocalDate =
     LocalDate.of(year, 12, 1).with(TemporalAdjusters.dayOfWeekInMonth(2, DayOfWeek.SATURDAY)).plusDays(1)
 
-/** True if timetable data from [from] is not valid on [on] because a timetable change lies in between. */
+/**
+ * True if timetable data from [from] is not valid on [on] because a timetable change lies in between, either way
+ * round: [from] may also be a later day (prefetched) copied back onto an earlier one.
+ */
 fun crossesTimetableChange(from: LocalDate, on: LocalDate): Boolean {
-    if (!from.isBefore(on)) return false
-    return (from.year..on.year).any { y -> timetableChange(y).let { it.isAfter(from) && !it.isAfter(on) } }
+    val (early, late) = if (from.isBefore(on)) from to on else on to from
+    return (early.year..late.year).any { y -> timetableChange(y).let { it.isAfter(early) && !it.isAfter(late) } }
 }
 
 /**
