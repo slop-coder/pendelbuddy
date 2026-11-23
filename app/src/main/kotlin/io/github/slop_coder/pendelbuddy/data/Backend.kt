@@ -113,6 +113,9 @@ class Backend private constructor(context: Context) {
     /** The saved OJP key was refused; reset when a key is entered or removed. */
     @Volatile private var ojpRejected = false
 
+    /** How often OJP failed and transport.opendata.ch answered instead; read while holding [fetchLock]. */
+    private var ojpFallbacks = 0
+
     fun clearSourceProblem() {
         ojpRejected = false
         _source.update { Source() }
@@ -161,6 +164,7 @@ class Backend private constructor(context: Context) {
                 Log.w(TAG, "OJP answer not understood", e)
                 _source.update { it.copy(ojpProblem = "OJP answer not understood: ${e.message?.take(120)}") }
             }
+            ojpFallbacks++ // only reached when OJP failed
         }
         return logged("transport.opendata.ch", what, cause, { TransportClient.connections(from.id, to.id, at, limit) }) { "${it.size} trips" }.also {
             _source.update { s -> s.copy(name = "transport.opendata.ch") }
@@ -279,9 +283,15 @@ class Backend private constructor(context: Context) {
         _myTripLoading.value = true
         try {
             val s = store.settings()
-            val fresh = fetchLock.withLock { plan(s, mine.route, mine.trip.departure - LOOK_BACK, limit = 4, "$cause, my trip") }
+            val (fresh, fellBack) = fetchLock.withLock {
+                val before = ojpFallbacks
+                plan(s, mine.route, mine.trip.departure - LOOK_BACK, limit = 4, "$cause, my trip") to (ojpFallbacks != before)
+            }
             store.saveRoute(store.route(mine.from.id, mine.to.id).merge(fresh, now))
             val found = mine.findIn(fresh)
+            // OJP failed and transport.opendata.ch answered: its trips need not match OJP's, so the trip missing
+            // from that answer does not mean it is gone. Counted as a failed download; the last known version stays.
+            if (found == null && fellBack) return@withLock false
             // Not in the answer: keep showing the last known version, marked as missing.
             // Dropped or replaced while downloading: keep what you chose.
             val latest = _myTrip.value
