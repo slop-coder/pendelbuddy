@@ -75,6 +75,14 @@ class ChangesTest {
     }
 
     @Test
+    fun nextStopAllowsForTheDelay() {
+        // 12 min late: the 07:45 stop at Zwischenau is reached at 07:57, so at 07:50 it is still ahead.
+        val c = Changes.of(mine(ic(depDelay = 12, alightSkipped = true), change, s3()), at(7, 50)).first { it.key == "skip-alight:0" }
+        assertEquals("Zwischenau", c.station?.name)
+        assertEquals(at(7, 57), c.at)
+    }
+
+    @Test
     fun fakeChangesAreAnnounced() {
         val real = mine(ic(), change, s3())
         fun keysWith(f: Fake) = keys(real.copy(trip = f.applyTo(real.trip), found = !f.gone))

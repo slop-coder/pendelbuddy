@@ -95,11 +95,15 @@ object Changes {
     /** The train you are on, or the next one you take. */
     private fun current(trains: List<Leg>, now: Long) = trains.lastOrNull { now >= it.expectedDeparture() } ?: trains.first()
 
-    /** A change with other trips to look at instead of [leg]: from where it leaves, or once on board, from its next stop. */
+    /**
+     * A change with other trips to look at instead of [leg]: from where it leaves, or once on board, from its next
+     * stop (allowing for the train's delay, as [Leg.callAt] does).
+     */
     private fun replan(key: String, text: String, leg: Leg, now: Long): Change {
         if (now < leg.expectedDeparture()) return Change(key, text, Station(leg.fromId, leg.fromName), maxOf(now, leg.departure))
-        val next = leg.calls.firstOrNull { it.departure > now }
-        return if (next != null) Change(key, text, Station(next.id, next.name), next.departure)
+        val late = 60L * (leg.departureDelay ?: 0)
+        val next = leg.calls.firstOrNull { it.departure + late > now }
+        return if (next != null) Change(key, text, Station(next.id, next.name), next.departure + late)
         else Change(key, text, Station(leg.toId, leg.toName), leg.expectedArrival())
     }
 }
